@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.text.InputFilter;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -33,7 +34,7 @@ public class MainActivity extends Activity {
     private CalendarSync calSync;
 
     private LinearLayout root;
-    private View dayListSection, memberSection, settingsSection;
+    private LinearLayout dayListSection, memberSection, settingsSection;
     private TextView statusView;
 
     private static final DateTimeFormatter D_FMT = DateTimeFormatter.ofPattern("M月d日 EEE");
@@ -222,7 +223,7 @@ public class MainActivity extends Activity {
 
         final EditText et = new EditText(this);
         et.setHint("新成员姓名");
-        et.setMaxLength(12);
+        et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
         et.setBackground(new ColorDrawable(Color.parseColor("#FFFFFF")));
         LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
@@ -257,7 +258,7 @@ public class MainActivity extends Activity {
         setName.setOnClickListener(v -> {
             final EditText et = new EditText(this);
             et.setText(store.roomName());
-            et.setMaxLength(16);
+            et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16)});
             new AlertDialog.Builder(this)
                     .setTitle("寝室名称")
                     .setView(et)
@@ -281,9 +282,9 @@ public class MainActivity extends Activity {
                     .setView(et)
                     .setPositiveButton("保存", (d, w) -> {
                         String s = et.getText().toString().trim();
-                        LocalDate d = parseDate(s);
-                        if (d != null) {
-                            store.setStartDate(d);
+                        LocalDate dd = parseDate(s);
+                        if (dd != null) {
+                            store.setStartDate(dd);
                             renderAll();
                         }
                     })
@@ -355,7 +356,7 @@ public class MainActivity extends Activity {
         tv.setPadding(dp(12), dp(8), dp(12), dp(8));
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(Color.parseColor(color));
-        bg.cornerRadius(dp(16));
+        bg.setCornerRadius(dp(16)*1f);
         tv.setBackground(bg);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
