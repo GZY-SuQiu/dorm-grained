@@ -166,14 +166,16 @@ public class CalendarSync {
                 if (actual != null) {
                     long ds = d.atStartOfDay(z).toInstant().toEpochMilli();
                     long de = ds + 86400_000L;
-                    ctx.getContentResolver().delete(
-                            CalendarContract.Events.CONTENT_URI,
-                            CalendarContract.Events.CALENDAR_ID + "=? AND "
-                                    + CalendarContract.Events.DTSTART + ">=? AND "
-                                    + CalendarContract.Events.DTSTART + "<?",
-                            new String[]{String.valueOf(calId),
-                                    String.valueOf(ds), String.valueOf(de)});
-                    removed++;
+                    try {
+                        ctx.getContentResolver().delete(
+                                CalendarContract.Events.CONTENT_URI,
+                                CalendarContract.Events.CALENDAR_ID + "=? AND "
+                                        + CalendarContract.Events.DTSTART + ">=? AND "
+                                        + CalendarContract.Events.DTSTART + "<?",
+                                new String[]{String.valueOf(calId),
+                                        String.valueOf(ds), String.valueOf(de)});
+                        removed++;
+                    } catch (Exception ignored) {}
                 }
                 continue;
             }
@@ -191,9 +193,34 @@ public class CalendarSync {
                 try { ctx.getContentResolver().insert(CalendarContract.Events.CONTENT_URI, v); added++; }
                 catch (Exception ignored) {}
             } else if (!actual.equals(expect)) {
-                // 事件被改过（时间/内容/名目）→ 整区间重写
-                clearRange(calId, days);
-                repaired += syncDuty(days);
+                // 事件被改过 → 只重写这一天（旧版整区间重写 + syncDuty 会反复清空重写，计数虚高且耗时）
+                long ds = d.atStartOfDay(z).toInstant().toEpochMilli();
+                long de = ds + 86400_000L;
+                boolean ok = true;
+                try {
+                    ctx.getContentResolver().delete(
+                            CalendarContract.Events.CONTENT_URI,
+                            CalendarContract.Events.CALENDAR_ID + "=? AND "
+                                    + CalendarContract.Events.DTSTART + ">=? AND "
+                                    + CalendarContract.Events.DTSTART + "<?",
+                            new String[]{String.valueOf(calId),
+                                    String.valueOf(ds), String.valueOf(de)});
+                } catch (Exception e) { ok = false; }
+                if (ok) {
+                    long start = ds + 7L * 3600_000;
+                    long end = start + 15L * 3600_000;
+                    ContentValues v = new ContentValues();
+                    v.put(CalendarContract.Events.CALENDAR_ID, calId);
+                    v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", names));
+                    v.put(CalendarContract.Events.DESCRIPTION, expect);
+                    v.put(CalendarContract.Events.DTSTART, start);
+                    v.put(CalendarContract.Events.DTEND, end);
+                    v.put(CalendarContract.Events.EVENT_TIMEZONE, z.getId());
+                    try {
+                        ctx.getContentResolver().insert(CalendarContract.Events.CONTENT_URI, v);
+                        repaired++;
+                    } catch (Exception ignored) {}
+                }
             }
         }
         return new int[]{added, repaired, removed};

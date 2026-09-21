@@ -30,7 +30,7 @@ public class DataStore {
     public int size() { return sp.getInt("room_size", 6); }
     public void setSize(int v) { sp.edit().putInt("room_size", v).apply(); }
 
-    public int perDay() { return size() <= 6 ? 1 : 2; } // 6人以下每天1人，7人以上每天2人
+    public int perDay() { return memberCount() <= 6 ? 1 : 2; } // 按实际成员数：6人以下每天1人，7人以上每天2人
 
     public LocalDate startDate() {
         long e = sp.getLong("start_epoch", LocalDate.now().toEpochDay());
@@ -75,6 +75,9 @@ public class DataStore {
     public void setLeader(int idx, boolean leader) {
         List<Member> m = members();
         if (idx < 0 || idx >= m.size()) return;
+        if (leader) {
+            for (Member x : m) x.leader = false; // 先清掉旧寝室长（之前改的是临时列表，没保存）
+        }
         m.get(idx).leader = leader;
         saveMembers(m);
     }

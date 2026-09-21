@@ -42,11 +42,21 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        installCrashHandler();
         store = new DataStore(this);
         calSync = new CalendarSync(this, store);
         buildUi();
         requestPermissions();
         renderAll();
+    }
+
+    /** 全局异常兜底：崩溃堆栈落盘，下次打开可查看 */
+    private void installCrashHandler() {
+        Thread prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            CrashLog.append(this, e);
+            if (prev != null) prev.uncaughtException(t, e);
+        });
     }
 
     @Override
@@ -95,7 +105,7 @@ public class MainActivity extends Activity {
         t.setText("🏠 寝室值日 · " + store.roomName());
         bar.addView(t, 0, barHeight());
         TextView hint = makeText(12, Color.GRAY);
-        hint.setText(store.size() + " 人间 · 每天 " + store.perDay() + " 人");
+        hint.setText(store.memberCount() + " 人寝室 · 每天 " + store.perDay() + " 人");
         bar.addView(hint, 1, barHeight());
         LinearLayout.LayoutParams lpl = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -159,11 +169,11 @@ public class MainActivity extends Activity {
             if (i == 0 && !names.isEmpty()) {
                 check = chip(allDone ? "✓ 已值完" : "去签到", allDone ? "#4CAF50" : "#E65100");
                 final List<String> nn = names;
+                final boolean wasAllDone = allDone;
                 check.setOnClickListener(v -> {
                     for (String n : nn) store.toggleCheck(d.toString(), n);
                     renderAll();
-                    if (allDone && !nn.stream().allMatch(x -> store.isChecked(d.toString(), x)))
-                        ToastSafe.show(this, "已签到 ✓");
+                    ToastSafe.show(this, wasAllDone ? "已清除签到状态" : "已签到 ✓");
                 });
                 row.addView(check);
             }
@@ -202,8 +212,7 @@ public class MainActivity extends Activity {
             } else {
                 View setL = chip("设为寝室长", "#1976D2");
                 setL.setOnClickListener(v -> {
-                    for (DataStore.Member x : store.members()) x.leader = false;
-                    store.setLeader(idx, true);
+                    store.setLeader(idx, true); // 内部已处理清除旧寝室长
                     renderAll();
                 });
                 row.addView(setL);
@@ -300,9 +309,6 @@ public class MainActivity extends Activity {
         });
         settingsSection.addView(startOver);
 
-        statusView = makeText(13, Color.GRAY);
-        settingsSection.addView(statusView);
-
         View sync = chip("📅 写入系统日历（7 天）", "#2E7D32");
         sync.setOnClickListener(v -> {
             int n = calSync.syncDuty(7);
@@ -328,6 +334,21 @@ public class MainActivity extends Activity {
         });
         settingsSection.addView(verify);
 
+        String crashSummary = CrashLog.lastSummary(this);
+        View crashRow = chip(crashSummary.isEmpty()
+                ? "💾 崩溃日志（无记录）"
+                : "💾 最近崩溃：" + crashSummary,
+                crashSummary.isEmpty() ? "#607D8B" : "#B71C1C");
+        crashRow.setOnClickListener(v -> {
+            String full = CrashLog.last(this);
+            new AlertDialog.Builder(this)
+                    .setTitle("最近一次崩溃日志")
+                    .setMessage(full.isEmpty() ? "暂无崩溃记录" : full)
+                    .setPositiveButton("知道了", null)
+                    .show();
+        });
+        settingsSection.addView(crashRow);
+
         TextView note = makeText(12, Color.GRAY);
         note.setText("说明：排班数据以 App 内存储为准；系统日历仅作展示与提醒，" +
                 "被手动删改时点上方「校验修复」一键还原。" +
@@ -344,7 +365,7 @@ public class MainActivity extends Activity {
         ((TextView) ((LinearLayout) root.getChildAt(0)).getChildAt(0)).setText(
                 "🏠 寝室值日 · " + store.roomName());
         TextView hint = (TextView) ((LinearLayout) root.getChildAt(0)).getChildAt(1);
-        hint.setText(store.size() + " 人间 · 每天 " + store.perDay() + " 人");
+        hint.setText(store.memberCount() + " 人寝室 · 每天 " + store.perDay() + " 人");
     }
 
     private View chip(String text, String color) {
