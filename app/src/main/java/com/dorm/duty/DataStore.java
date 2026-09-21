@@ -24,6 +24,9 @@ public class DataStore {
     }
 
     // ---------- 寝室配置 ----------
+    public boolean isPrivacyAccepted() { return sp.getBoolean("privacy_accepted", false); }
+    public void setPrivacyAccepted(boolean v) { sp.edit().putBoolean("privacy_accepted", v).apply(); }
+
     public String roomName() { return sp.getString("room_name", "我的寝室"); }
     public void setRoomName(String v) { sp.edit().putString("room_name", v).apply(); }
 
