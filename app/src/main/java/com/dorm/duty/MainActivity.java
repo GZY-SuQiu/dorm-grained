@@ -45,6 +45,29 @@ public class MainActivity extends Activity {
     private static final String C_ACCENT = "#2E7D32";
     private static final DateTimeFormatter D_FMT = DateTimeFormatter.ofPattern("M月d日 EEE");
 
+    private static final String ABOUT_TEXT =
+            "【作者声明】\n"
+            + "作者：苏丠\n"
+            + "开发团队：G_SuQiu 工作室\n"
+            + "开发引擎：SDK / Gradle\n"
+            + "开发者系统：Windows 11 专业工作站版\n\n"
+            + "【法律声明】\n"
+            + "1. 本产品为免费产品，未公开售卖。如在商业平台买到此产品，请立即退款并举报。\n"
+            + "2. 本产品只在本地运行，个人隐私不会上传云端，本产品存有隐私保护。\n"
+            + "3. 应用内数据（成员、排班、签到）仅保存于本设备，卸载应用即全部清除。\n\n"
+            + "如有疑问请联系开发者：\n2376990248@qq.com";
+
+    private static final String PRIVACY_TEXT =
+            "用户隐私协议\n\n"
+            + "1. 本产品只在本地运行，您的个人信息（寝室成员名单、排班安排、签到记录）"
+            + "仅保存在您的设备上，不会上传到任何云端服务器。\n"
+            + "2. 应用仅在您主动点击「写入系统日历」时访问系统日历，且只写入本地日历"
+            + "「寝室值日表」，不会读取其他日历数据。\n"
+            + "3. 应用不包含广告、追踪或任何形式的用户画像。\n"
+            + "4. 卸载本应用后，本地数据将全部清除。\n\n"
+            + "请您在使用前仔细阅读。点击「接受」即表示您已了解并同意以上内容；"
+            + "点击「拒绝」将立即退出本应用。";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -63,6 +86,51 @@ public class MainActivity extends Activity {
         selectTab(0);
         requestPermissions();
         renderAll();
+        // 首次启动：隐私协议确认（接受才进入，拒绝立即退出）
+        if (!store.isPrivacyAccepted()) showPrivacyDialog();
+    }
+
+    /** 隐私协议：只弹一次，点接受才继续，点拒绝立即退出 */
+    private void showPrivacyDialog() {
+        TextView tv = new TextView(this);
+        tv.setTextSize(14);
+        tv.setLineSpacing(dp(4), 1f);
+        tv.setText(PRIVACY_TEXT);
+        int p = dp(20);
+        tv.setPadding(p, p, p, p);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(tv);
+        new AlertDialog.Builder(this)
+                .setTitle("用户隐私协议")
+                .setView(sv)
+                .setCancelable(false)
+                .setPositiveButton("接受", (d, w) -> store.setPrivacyAccepted(true))
+                .setNegativeButton("拒绝", (d, w) -> finishAffinity())
+                .show();
+    }
+
+    private void dialogAbout() {
+        new AlertDialog.Builder(this)
+                .setTitle("作者声明 · 法律声明")
+                .setMessage(ABOUT_TEXT)
+                .setPositiveButton("知道了", null)
+                .show();
+    }
+
+    private void dialogPrivacy() {
+        TextView tv = new TextView(this);
+        tv.setTextSize(14);
+        tv.setLineSpacing(dp(4), 1f);
+        tv.setText(PRIVACY_TEXT);
+        int p = dp(20);
+        tv.setPadding(p, p, p, p);
+        ScrollView sv = new ScrollView(this);
+        sv.addView(tv);
+        new AlertDialog.Builder(this)
+                .setTitle("用户隐私协议")
+                .setView(sv)
+                .setPositiveButton("我同意", null)
+                .show();
     }
 
     @Override
@@ -526,6 +594,18 @@ public class MainActivity extends Activity {
                     }
                 }));
         pageSettings.addView(g3);
+
+        // —— 关于 ——
+        pageSettings.addView(groupHeader("关于"));
+        LinearLayout g5 = card();
+        g5.addView(settingRow("著", "#ECEFF1", "#607D8B",
+                "作者与法律声明", "免费产品 · 仅本地运行 · 隐私保护", "查看",
+                v -> dialogAbout()));
+        g5.addView(divider());
+        g5.addView(settingRow("保", "#ECEFF1", "#607D8B",
+                "用户隐私协议", "再次查看隐私保护条款", "查看",
+                v -> dialogPrivacy()));
+        pageSettings.addView(g5);
 
         // —— 诊断 ——
         pageSettings.addView(groupHeader("诊断"));
