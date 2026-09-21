@@ -42,20 +42,21 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
 
       # 把 APK 用 git 推到独立 dist 分支，供沙箱经 api.github.com 直接拉取
-      # （GitHub artifact CDN 在部分网络下被墙，这条通道更稳；
-      #   用 git 协议而非 Contents API，因为细粒度 token 的 Contents 建文件会 404）
+      # （GitHub artifact CDN 在部分网络下被墙；.gitignore 忽略了 *.apk，需 -f 强制加）
       - name: Push APK to dist branch
         run: |
           set -e
           APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
-          echo "pushing $APK ($(stat -c%s "$APK") bytes) to dist branch"
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
           cp "$APK" dorm-duty.apk
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout --orphan dist
-          git rm -rf --cached . >/dev/null 2>&1 || true
-          git add dorm-duty.apk
+          git add -f dorm-duty.apk
           git commit -m "ci: dorm-duty.apk ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          git branch -f dist
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push --force origin dist
-          echo "dist branch updated"
+          if git push --force origin dist 2>push.log; then
+            echo "dist branch pushed"
+          else
+            echo "PUSH FAILED:"; cat push.log; exit 1
+          fi
