@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       actions: write
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
@@ -40,3 +40,27 @@ jobs:
         with:
           name: dorm-duty
           path: app/build/outputs/apk/debug/*.apk
+
+      # 把 APK 提交到独立 dist 分支，供沙箱经 api.github.com 直接拉取
+      # （GitHub artifact CDN 在部分网络下被墙，这条通道更稳）
+      - name: Commit APK to dist branch
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "committing $APK ($(stat -c%s "$APK") bytes) to dist branch"
+          B64=$(base64 -w0 "$APK")
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY/contents/dorm-duty.apk"
+          AUTH="Authorization: Bearer $GITHUB_TOKEN"
+          SHA=$(curl -s -H "$AUTH" "$API?ref=dist" | python3 -c "import json,sys
+          try: print(json.load(sys.stdin).get('sha',''))
+          except: print('')")
+          if [ -n "$SHA" ]; then
+            printf '{"message":"ci: update dorm-duty.apk","branch":"dist","sha":"%s","content":"%s"}' "$SHA" "$B64" > /tmp/payload.json
+            curl -s -X PUT -H "$AUTH" -H "Content-Type: application/json" -d @/tmp/payload.json "$API" | head -c 200
+            echo ""
+          else
+            printf '{"message":"ci: add dorm-duty.apk","branch":"dist","content":"%s"}' "$B64" > /tmp/payload.json
+            curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" -d @/tmp/payload.json "$API" | head -c 200
+            echo ""
+          fi
+          echo "done"
