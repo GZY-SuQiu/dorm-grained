@@ -10,8 +10,8 @@ android {
         applicationId "com.dorm.duty"
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName "2.3"
+        versionCode 8
+        versionName "2.4"
     }
 
     buildTypes {
@@ -23,5 +23,8 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig true
     }
 }
