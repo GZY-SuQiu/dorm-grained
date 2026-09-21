@@ -706,13 +706,13 @@ public class MainActivity extends Activity {
 
     /** 段落文本 */
     private TextView para(String s) {
-        TextView t = makeText(13, t.textPrimary);
-        t.setText(s);
+        TextView tv = makeText(13, t.textPrimary);
+        tv.setText(s);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(6), 0, 0);
-        t.setLayoutParams(lp);
-        return t;
+        tv.setLayoutParams(lp);
+        return tv;
     }
 
     /** 信息行：灰标签 + 加粗值 */
