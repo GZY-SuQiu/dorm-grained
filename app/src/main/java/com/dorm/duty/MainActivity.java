@@ -834,7 +834,7 @@ public class MainActivity extends Activity {
                     new AlertDialog.Builder(this)
                             .setTitle("选择写入目标日历")
                             .setSingleChoiceItems(items, checked, (d, w) -> {
-                                store.setSelectedCalendarId(w == 0 ? 0 : cals.get(w - 1).id);
+                                store.setSelectedCalendarId(w == 0 ? 0 : (int) cals.get(w - 1).id);
                                 renderAll();
                                 ToastSafe.show(this, "目标已更新");
                             })

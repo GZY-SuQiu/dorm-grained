@@ -25,6 +25,8 @@ import java.util.Map;
 public class CalendarSync {
     private static final String ACCOUNT = "DormDuty";
     private static final String FEED = "dd_" + DataStore.TAG; // 防串日历
+    // 日历访问级别：0=只读 1=可写不可评 2=OWN 3=EDIT；>=2 即可编辑
+    private static final int ACCESS_EDIT = 2;
 
     private final Context ctx;
     private final DataStore store;
@@ -39,10 +41,7 @@ public class CalendarSync {
         if (own > 0) return own;
         long created = createOwn();
         if (created > 0) return created;
-        try {
-            long def = CalendarContract.Calendars.getDefaultCalendarId(ctx);
-            if (def > 0) return def;
-        } catch (Exception ignored) {}
+        // 无"默认日历"API：自建失败就找设备里任意可编辑的日历
         return firstWritable();
     }
 
@@ -99,7 +98,7 @@ public class CalendarSync {
                 null, null, null)) {
             if (c != null) while (c.moveToNext()) {
                 int lvl = c.getInt(1);
-                if (lvl >= CalendarContract.Calendars.CAL_EDIT) return c.getLong(0);
+                if (lvl >= ACCESS_EDIT) return c.getLong(0);
             }
         } catch (Exception ignored) {}
         return -1;
@@ -122,7 +121,7 @@ public class CalendarSync {
                 null, null, null)) {
             if (c != null) while (c.moveToNext()) {
                 int lvl = c.getInt(3);
-                if (lvl >= CalendarContract.Calendars.CAL_EDIT) {
+                if (lvl >= ACCESS_EDIT) {
                     CalInfo ci = new CalInfo();
                     ci.id = c.getLong(0);
                     String display = c.getString(1);
