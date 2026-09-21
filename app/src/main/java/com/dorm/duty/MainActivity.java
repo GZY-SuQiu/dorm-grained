@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
             TextView nm = makeText(15, Color.parseColor("#212121"));
             nm.setText((m.leader ? "👑 " : "") + m.name);
             nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
-            row.addView(nm, 1, rowHeight());
+            row.addView(nm, 0, rowHeight());
 
             if (m.leader) {
                 View out = chip("寝室长", "#37474F");
@@ -218,7 +218,11 @@ public class MainActivity extends Activity {
                 row.addView(setL);
             }
             View del = chip("✕", "#C62828");
-            del.setOnClickListener(v -> store.removeMember(idx));
+            del.setOnClickListener(v -> {
+                store.removeMember(idx);
+                renderAll();
+                ToastSafe.show(this, "已删除 " + m.name);
+            });
             row.addView(del);
 
             memberSection.addView(row);
