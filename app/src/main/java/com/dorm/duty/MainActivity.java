@@ -31,31 +31,19 @@ public class MainActivity extends Activity {
 
     private LinearLayout root;
     private FrameLayout pageHost;
-    private ScrollView svToday, svPlan, svMembers, svSettings;
-    private LinearLayout pageToday, pagePlan, pageMembers, pageSettings;
+    private ScrollView svToday, svPlan, svMembers, svSettings, svAbout;
+    private LinearLayout pageToday, pagePlan, pageMembers, pageSettings, pageAbout;
     private TextView titleMain, hintView;
-    private final TextView[] tabIcons = new TextView[4];
-    private final TextView[] tabLabels = new TextView[4];
+    private final TextView[] tabIcons = new TextView[5];
+    private final TextView[] tabLabels = new TextView[5];
     private int currentTab;
 
-    private static final String[] TAB_LABELS = {"今日值日", "排班", "成员", "设置"};
-    private static final char[] TAB_CHARS = {'值', '排', '员', '设'};
+    private static final String[] TAB_LABELS = {"今日值日", "排班", "成员", "设置", "关于"};
+    private static final char[] TAB_CHARS = {'值', '排', '员', '设', '著'};
 
     private static final int C_MAIN = Color.parseColor("#1B5E20");
     private static final String C_ACCENT = "#2E7D32";
     private static final DateTimeFormatter D_FMT = DateTimeFormatter.ofPattern("M月d日 EEE");
-
-    private static final String ABOUT_TEXT =
-            "【作者声明】\n"
-            + "作者：苏丠\n"
-            + "开发团队：G_SuQiu 工作室\n"
-            + "开发引擎：SDK / Gradle\n"
-            + "开发者系统：Windows 11 专业工作站版\n\n"
-            + "【法律声明】\n"
-            + "1. 本产品为免费产品，未公开售卖。如在商业平台买到此产品，请立即退款并举报。\n"
-            + "2. 本产品只在本地运行，个人隐私不会上传云端，本产品存有隐私保护。\n"
-            + "3. 应用内数据（成员、排班、签到）仅保存于本设备，卸载应用即全部清除。\n\n"
-            + "如有疑问请联系开发者：\n2376990248@qq.com";
 
     private static final String PRIVACY_TEXT =
             "用户隐私协议\n\n"
@@ -106,14 +94,6 @@ public class MainActivity extends Activity {
                 .setCancelable(false)
                 .setPositiveButton("接受", (d, w) -> store.setPrivacyAccepted(true))
                 .setNegativeButton("拒绝", (d, w) -> finishAffinity())
-                .show();
-    }
-
-    private void dialogAbout() {
-        new AlertDialog.Builder(this)
-                .setTitle("作者声明 · 法律声明")
-                .setMessage(ABOUT_TEXT)
-                .setPositiveButton("知道了", null)
                 .show();
     }
 
@@ -170,6 +150,8 @@ public class MainActivity extends Activity {
         svMembers = makePage(pageMembers, 2);
         pageSettings = newInnerPage();
         svSettings = makePage(pageSettings, 3);
+        pageAbout = newInnerPage();
+        svAbout = makePage(pageAbout, 4);
 
         root.addView(buildTabBar());
         setContentView(root);
@@ -228,7 +210,7 @@ public class MainActivity extends Activity {
         bar.setPadding(0, dp(8), 0, dp(4));
         bar.setBackgroundColor(Color.WHITE);
         wrap.addView(bar);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             final int ti = i;
             LinearLayout tab = new LinearLayout(this);
             tab.setOrientation(LinearLayout.VERTICAL);
@@ -268,7 +250,8 @@ public class MainActivity extends Activity {
         svPlan.setVisibility(i == 1 ? View.VISIBLE : View.GONE);
         svMembers.setVisibility(i == 2 ? View.VISIBLE : View.GONE);
         svSettings.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
-        for (int k = 0; k < 4; k++) {
+        svAbout.setVisibility(i == 4 ? View.VISIBLE : View.GONE);
+        for (int k = 0; k < 5; k++) {
             boolean on = k == i;
             ((GradientDrawable) tabIcons[k].getBackground())
                     .setColor(on ? Color.parseColor(C_ACCENT) : Color.parseColor("#ECEFF1"));
@@ -595,13 +578,9 @@ public class MainActivity extends Activity {
                 }));
         pageSettings.addView(g3);
 
-        // —— 关于 ——
-        pageSettings.addView(groupHeader("关于"));
+        // —— 隐私 ——
+        pageSettings.addView(groupHeader("隐私"));
         LinearLayout g5 = card();
-        g5.addView(settingRow("著", "#ECEFF1", "#607D8B",
-                "作者与法律声明", "免费产品 · 仅本地运行 · 隐私保护", "查看",
-                v -> dialogAbout()));
-        g5.addView(divider());
         g5.addView(settingRow("保", "#ECEFF1", "#607D8B",
                 "用户隐私协议", "再次查看隐私保护条款", "查看",
                 v -> dialogPrivacy()));
@@ -630,6 +609,79 @@ public class MainActivity extends Activity {
         pageSettings.addView(note);
     }
 
+    // ============================ 页5：关于 ============================
+
+    private void renderAbout() {
+        pageAbout.removeAllViews();
+        pageAbout.addView(sectionHeader("关于"));
+
+        pageAbout.addView(groupHeader("作者声明"));
+        LinearLayout ga = card();
+        ga.addView(para("本产品为免费产品，未公开售卖。如果本产品为购买的请立即退款并差评处理！"
+                + "如果被骗作者不承担责任，请尊重开发者！"));
+        ga.addView(infoRow("开发工具", "Android-SDK, Gradle"));
+        ga.addView(infoRow("开发环境", "PyCharm"));
+        ga.addView(infoRow("编译工程", "Android"));
+        ga.addView(infoRow("开发者系统", "Windows11 专业工作站版"));
+        ga.addView(infoRow("作者", "苏丠"));
+        ga.addView(infoRow("开发者", "G_SuQiu"));
+        ga.addView(para("如果存在问题或者功能缺陷欢迎联系："));
+        TextView email = makeText(13, C_MAIN);
+        email.setText("2376990248@qq.com");
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        elp.setMargins(0, 0, 0, dp(6));
+        email.setLayoutParams(elp);
+        ga.addView(email);
+        pageAbout.addView(ga);
+
+        pageAbout.addView(groupHeader("法律声明"));
+        LinearLayout gl = card();
+        gl.addView(para("本软件仅供个人学习与生活使用的免费产品，未授权任何平台或个人公开售卖。"
+                + "如您通过付费渠道获得本软件，请立即退款并举报。"));
+        gl.addView(para("软件内所有功能数据均保存在本机，不会收集、上传您的任何个人信息，"
+                + "如果对本产品存在疑惑可拒绝使用！"));
+        gl.addView(para("严禁对本软件进行反向工程、破解、二次分发或去除作者信息。"
+                + "对侵犯作者权益的行为，作者将会保留证据并追究法律责任的权利。"));
+        pageAbout.addView(gl);
+
+        TextView ver = makeText(12, Color.GRAY);
+        ver.setText("版本 " + BuildConfig.VERSION_NAME);
+        ver.setGravity(Gravity.CENTER);
+        ver.setPadding(0, dp(12), 0, dp(4));
+        pageAbout.addView(ver);
+    }
+
+    /** 段落文本 */
+    private TextView para(String s) {
+        TextView t = makeText(13, Color.parseColor("#37474F"));
+        t.setText(s);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(6), 0, 0);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    /** 信息行：灰标签 + 加粗值 */
+    private View infoRow(String k, String v) {
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(0, dp(3), 0, dp(3));
+        TextView a = makeText(13, Color.GRAY);
+        a.setText(k + "：");
+        r.addView(a);
+        TextView b = makeText(13, Color.parseColor("#212121"));
+        b.setTypeface(b.getTypeface(), Typeface.BOLD);
+        b.setText(v);
+        b.setGravity(Gravity.START);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        r.addView(b, blp);
+        return r;
+    }
+
     // ============================ 渲染调度 ============================
 
     private void renderAll() {
@@ -639,6 +691,7 @@ public class MainActivity extends Activity {
         renderPlan();
         renderMembers();
         renderSettings();
+        renderAbout();
     }
 
     // ============================ 组件 & 工具 ============================
