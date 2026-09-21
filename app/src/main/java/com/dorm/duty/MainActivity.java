@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
     private final TextView[] tabIcons = new TextView[5];
     private final TextView[] tabLabels = new TextView[5];
     private int currentTab;
+    private int expandedIdx = -1; // 成员页当前展开 ⚙ 面板的成员序号
 
     private static final String[] TAB_LABELS = {"今日值日", "排班", "成员", "设置", "关于"};
     private static final char[] TAB_CHARS = {'值', '排', '员', '设', '著'};
@@ -307,7 +308,7 @@ public class MainActivity extends Activity {
         card.addView(label);
         TextView big = makeText(28, t.mainDark);
         big.setTypeface(big.getTypeface(), Typeface.BOLD);
-        big.setText(names.isEmpty() ? "还没有人" : String.join("  ", names));
+        big.setText(names.isEmpty() ? "还没有人" : String.join("  ", store.dutyDisplayOf(today)));
         card.addView(big);
         if (names.isEmpty()) {
             TextView tip = makeText(12, t.textSecondary);
@@ -337,7 +338,7 @@ public class MainActivity extends Activity {
         for (int i = 1; i <= 3; i++) {
             LocalDate d = today.plusDays(i);
             List<String> n2 = store.dutyOf(d);
-            next.addView(hRow(dd[i - 1], n2.isEmpty() ? "—" : String.join("、", n2)));
+            next.addView(hRow(dd[i - 1], n2.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(d))));
         }
         pageToday.addView(next);
 
@@ -385,7 +386,7 @@ public class MainActivity extends Activity {
             TextView duty = makeText(14, t.textPrimary);
             duty.setTypeface(duty.getTypeface(), Typeface.BOLD);
             duty.setGravity(Gravity.END);
-            duty.setText(names.isEmpty() ? "—" : String.join("、", names));
+            duty.setText(names.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(d)));
             duty.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
             row.addView(duty);
@@ -418,7 +419,7 @@ public class MainActivity extends Activity {
             hr.addView(hdate);
             TextView hname = makeText(13, t.textPrimary);
             hname.setTypeface(hname.getTypeface(), Typeface.BOLD);
-            hname.setText(hs.isEmpty() ? "—" : String.join("、", hs));
+            hname.setText(hs.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(hd)));
             hname.setGravity(Gravity.END);
             hname.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -484,13 +485,18 @@ public class MainActivity extends Activity {
             alp.setMargins(0, 0, dp(12), 0);
             row.addView(avatar, alp);
 
-            // 姓名 + 状态
+            // 姓名 + 床位 + 状态
             LinearLayout info = new LinearLayout(this);
             info.setOrientation(LinearLayout.VERTICAL);
             TextView nm = makeText(15, t.textPrimary);
             nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
             nm.setText(m.name);
             info.addView(nm);
+            if (m.bed != null && !m.bed.isEmpty()) {
+                TextView bd = makeText(11, t.textSecondary);
+                bd.setText(m.bed);
+                info.addView(bd);
+            }
             TextView st = makeText(11, m.leader ? t.main : t.textSecondary);
             st.setText(m.leader ? "寝室长" : "成员");
             info.addView(st);
@@ -498,58 +504,65 @@ public class MainActivity extends Activity {
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
             row.addView(info);
 
-            // 改名（所有成员可用）
-            View ren = softChip("改名", t.tabOffBg, t.tabOffFg);
-            ren.setOnClickListener(v -> {
-                final EditText et2 = new EditText(this);
-                et2.setText(m.name);
-                et2.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
-                et2.setHintTextColor(t.textSecondary);
-                new AlertDialog.Builder(this)
-                        .setTitle("修改姓名")
-                        .setView(et2)
-                        .setPositiveButton("保存", (d, w) -> {
-                            String nn = et2.getText().toString().trim();
-                            if (nn.isEmpty()) { ToastSafe.show(this, "姓名不能为空"); return; }
-                            if (nn.equals(m.name)) return;
-                            if (store.members().stream().anyMatch(x -> x.name.equals(nn))) {
-                                ToastSafe.show(this, "该姓名已在名单中");
-                                return;
-                            }
-                            store.renameMember(idx, nn);
-                            renderAll();
-                            ToastSafe.show(this, "已改名为 " + nn);
-                        })
-                        .setNegativeButton("取消", null)
-                        .show();
+            // ⚙ 设置按钮：改名/设寝室长/删除 收进展开面板，行保持干净
+            TextView gear = new TextView(this);
+            gear.setText("⚙");
+            gear.setTextSize(16);
+            gear.setGravity(Gravity.CENTER);
+            boolean open = expandedIdx == idx;
+            gear.setTextColor(open ? t.main : t.tabOffFg);
+            GradientDrawable gd = new GradientDrawable();
+            gd.setShape(GradientDrawable.OVAL);
+            gd.setColor(open ? t.accent : t.tabOffBg);
+            gd.setStroke(dp(1), open ? t.main : t.cardStroke);
+            gear.setBackground(gd);
+            int gs = dp(34);
+            LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(gs, gs);
+            glp.setMargins(dp(8), 0, 0, 0);
+            gear.setLayoutParams(glp);
+            gear.setOnClickListener(v -> {
+                expandedIdx = open ? -1 : idx;
+                renderAll();
             });
-            row.addView(ren);
-
-            if (!m.leader) {
-                View setL = softChip("设为寝室长", 0xFFE3F2FD, 0xFF1976D2);
-                setL.setOnClickListener(v -> {
-                    store.setLeader(idx, true);
-                    renderAll();
-                    ToastSafe.show(this, m.name + " 已是寝室长");
-                });
-                row.addView(setL);
-                View del = softChip("删除", 0xFFFFEBEE, 0xFFC62828);
-                del.setOnClickListener(v -> new AlertDialog.Builder(this)
-                        .setTitle("删除成员")
-                        .setMessage("确认将 " + m.name + " 移出值日名单？排班会重新计算，且无法撤销。")
-                        .setPositiveButton("删除", (d, w) -> {
-                            store.removeMember(idx);
-                            renderAll();
-                            ToastSafe.show(this, m.name + " 已移出名单");
-                        })
-                        .setNegativeButton("取消", null)
-                        .show());
-                row.addView(del);
-            }
+            row.addView(gear);
             pageMembers.addView(row);
+
+            // 展开的操作面板
+            if (open) {
+                LinearLayout ex = card();
+                ex.addView(settingRow("改", t.tabOffBg, t.tabOffFg,
+                        "编辑资料", "姓名 · 床位", "编辑",
+                        v -> showEditDialog(idx, m)));
+                ex.addView(divider());
+                if (!m.leader) {
+                    ex.addView(settingRow("长", 0xFFE3F2FD, 0xFF1976D2,
+                            "设为寝室长", "一个寝室只有一位寝室长", "设置",
+                            v -> {
+                                store.setLeader(idx, true);
+                                expandedIdx = -1;
+                                renderAll();
+                                ToastSafe.show(this, m.name + " 已是寝室长");
+                            }));
+                    ex.addView(divider());
+                }
+                ex.addView(settingRow("删", 0xFFFFEBEE, 0xFFC62828,
+                        "删除成员", "将移出值日名单", "删除",
+                        v -> new AlertDialog.Builder(this)
+                                .setTitle("删除成员")
+                                .setMessage("确认将 " + m.name + " 移出值日名单？排班会重新计算，且无法撤销。")
+                                .setPositiveButton("删除", (d, w) -> {
+                                    store.removeMember(idx);
+                                    expandedIdx = -1;
+                                    renderAll();
+                                    ToastSafe.show(this, m.name + " 已移出名单");
+                                })
+                                .setNegativeButton("取消", null)
+                                .show()));
+                pageMembers.addView(ex);
+            }
         }
 
-        // 添加成员：输入框 + 按钮同一行
+        // 添加成员：姓名 + 床位 输入框 + 按钮
         LinearLayout addCard = card();
         addCard.setOrientation(LinearLayout.HORIZONTAL);
         addCard.setGravity(Gravity.CENTER_VERTICAL);
@@ -564,9 +577,21 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1);
         et.setLayoutParams(elp);
         addCard.addView(et);
+        final EditText etB = new EditText(this);
+        etB.setHint("床位（可空）");
+        etB.setTextSize(13);
+        etB.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+        etB.setBackground(null);
+        etB.setTextColor(t.textPrimary);
+        etB.setHintTextColor(t.textSecondary);
+        LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(84),
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        etB.setLayoutParams(blp);
+        addCard.addView(etB);
         View addBtn = solidButton("＋ 添加", t.main);
         addBtn.setOnClickListener(v -> {
             String name = et.getText().toString().trim();
+            String bed = etB.getText().toString().trim();
             if (name.isEmpty()) return;
             if (store.memberCount() >= 12) {
                 ToastSafe.show(this, "最多 12 人");
@@ -576,13 +601,60 @@ public class MainActivity extends Activity {
                 ToastSafe.show(this, "该成员已在名单中");
                 return;
             }
-            store.addMember(name);
+            store.addMember(name, bed);
             et.setText("");
+            etB.setText("");
             renderAll();
             ToastSafe.show(this, name + " 已加入");
         });
         addCard.addView(addBtn);
         pageMembers.addView(addCard);
+    }
+
+    /** 编辑成员：姓名 + 床位 */
+    private void showEditDialog(final int idx, final DataStore.Member m) {
+        final EditText etN = new EditText(this);
+        etN.setText(m.name);
+        etN.setHint("姓名");
+        etN.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+        etN.setTextColor(t.textPrimary);
+        etN.setHintTextColor(t.textSecondary);
+        final EditText etB = new EditText(this);
+        etB.setText(m.bed == null ? "" : m.bed);
+        etB.setHint("床位（可空）");
+        etB.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+        etB.setTextColor(t.textPrimary);
+        etB.setHintTextColor(t.textSecondary);
+        LinearLayout dl = new LinearLayout(this);
+        dl.setOrientation(LinearLayout.VERTICAL);
+        int p2 = dp(16);
+        dl.setPadding(p2, dp(8), p2, 0);
+        dl.addView(etN);
+        LinearLayout.LayoutParams blp2 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        blp2.setMargins(0, dp(10), 0, 0);
+        etB.setLayoutParams(blp2);
+        dl.addView(etB);
+        new AlertDialog.Builder(this)
+                .setTitle("编辑 " + m.name)
+                .setView(dl)
+                .setPositiveButton("保存", (d, w) -> {
+                    String nn = etN.getText().toString().trim();
+                    String bb = etB.getText().toString().trim();
+                    if (nn.isEmpty()) { ToastSafe.show(this, "姓名不能为空"); return; }
+                    if (!nn.equals(m.name) && store.members().stream()
+                            .filter(x -> !x.name.equals(m.name))
+                            .anyMatch(x -> x.name.equals(nn))) {
+                        ToastSafe.show(this, "该姓名已在名单中");
+                        return;
+                    }
+                    store.editMember(idx, nn, bb);
+                    expandedIdx = -1;
+                    renderAll();
+                    ToastSafe.show(this, "已保存");
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     // ============================ 页4：设置 ============================
@@ -675,6 +747,19 @@ public class MainActivity extends Activity {
                 store.isReminderEnabled() ? "开" : "关",
                 v -> {
                     boolean en = !store.isReminderEnabled();
+                    if (en) {
+                        // Android 13+ 需通知权限，没给就先申请，给了再开
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= 33
+                                    && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 100);
+                                ToastSafe.show(this, "请先允许通知权限，再开提醒");
+                                renderAll();
+                                return;
+                            }
+                        } catch (Exception ignored) {}
+                    }
                     store.setReminderEnabled(en);
                     ReminderManager.scheduleDaily(this, store);
                     renderAll();

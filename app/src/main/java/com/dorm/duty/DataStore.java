@@ -20,7 +20,15 @@ public class DataStore {
     public static class Member {
         public String name;
         public boolean leader;
-        public Member(String n, boolean l) { name = n; leader = l; }
+        public String bed; // 床位/备注，如 "3号床"
+        public Member(String n, boolean l) { this(n, l, ""); }
+        public Member(String n, boolean l, String b) { name = n; leader = l; bed = b == null ? "" : b; }
+    }
+
+    /** 成员展示名：张三（3号床）；无床位就纯名字 */
+    public static String displayText(Member x) {
+        return (x == null || x.name == null) ? "" :
+                x.name + ((x.bed == null || x.bed.isEmpty()) ? "" : "（" + x.bed + "）");
     }
 
     // ---------- 寝室配置 ----------
@@ -53,7 +61,8 @@ public class DataStore {
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 list.add(new Member(o.getString("n"),
-                        o.optBoolean("l", false)));
+                        o.optBoolean("l", false),
+                        o.optString("b", "")));
             }
         } catch (Exception ignored) {}
         return list;
@@ -61,9 +70,9 @@ public class DataStore {
 
     public int memberCount() { return members().size(); }
 
-    public void addMember(String name) {
+    public void addMember(String name, String bed) {
         List<Member> m = members();
-        m.add(new Member(name, m.isEmpty())); // 第一个人默认当寝室长
+        m.add(new Member(name, m.isEmpty(), bed)); // 第一个人默认当寝室长
         saveMembers(m);
     }
 
@@ -71,7 +80,9 @@ public class DataStore {
         List<Member> m = members();
         if (idx < 0 || idx >= m.size()) return;
         m.remove(idx);
-        if (m.size() == 1 && !m.get(0).leader) m.get(0).leader = true;
+        boolean hasLeader = false;
+        for (Member x : m) if (x.leader) hasLeader = true;
+        if (!m.isEmpty() && !hasLeader) m.get(0).leader = true; // 删完没人当寝室长就补上
         saveMembers(m);
     }
 
@@ -85,11 +96,28 @@ public class DataStore {
         saveMembers(m);
     }
 
-    public void renameMember(int idx, String name) {
+    /** 编辑成员资料：姓名 + 床位（都可为空则不动对应字段） */
+    public void editMember(int idx, String name, String bed) {
         List<Member> m = members();
         if (idx < 0 || idx >= m.size()) return;
-        m.get(idx).name = name;
+        Member me = m.get(idx);
+        if (name != null && !name.trim().isEmpty()) me.name = name.trim();
+        if (bed != null) me.bed = bed.trim();
         saveMembers(m);
+    }
+
+    /** 某天值日成员的展示名列表（带床位），如 ["张三（3号床）"] */
+    public List<String> dutyDisplayOf(LocalDate date) {
+        List<String> names = dutyOf(date);
+        List<String> out = new ArrayList<>();
+        for (String n : names) {
+            boolean found = false;
+            for (Member x : members()) {
+                if (x.name.equals(n)) { out.add(displayText(x)); found = true; break; }
+            }
+            if (!found) out.add(n);
+        }
+        return out;
     }
 
     // ---------- 提醒 ----------
@@ -115,6 +143,7 @@ public class DataStore {
             o.put("reminder_enabled", sp.getBoolean("reminder_enabled", false));
             o.put("reminder_hour", sp.getInt("reminder_hour", 7));
             o.put("reminder_minute", sp.getInt("reminder_minute", 0));
+            o.put("theme_index", sp.getInt("theme_index", 0));
             JSONObject checks = new JSONObject();
             for (String k : sp.getAll().keySet())
                 if (k.startsWith("check_")) checks.put(k, sp.getAll().get(k));
@@ -136,6 +165,9 @@ public class DataStore {
             if (o.has("members")) e.putString("members", o.getString("members"));
             if (o.has("privacy_accepted")) e.putBoolean("privacy_accepted", o.getBoolean("privacy_accepted"));
             if (o.has("reminder_enabled")) e.putBoolean("reminder_enabled", o.getBoolean("reminder_enabled"));
+            if (o.has("reminder_hour")) e.putInt("reminder_hour", o.getInt("reminder_hour"));
+            if (o.has("reminder_minute")) e.putInt("reminder_minute", o.getInt("reminder_minute"));
+            if (o.has("theme_index")) e.putInt("theme_index", o.getInt("theme_index"));
             if (o.has("checks")) {
                 JSONObject c = o.getJSONObject("checks");
                 java.util.Iterator<String> it = c.keys();
@@ -158,6 +190,7 @@ public class DataStore {
                 JSONObject o = new JSONObject();
                 o.put("n", x.name);
                 o.put("l", x.leader);
+                o.put("b", x.bed == null ? "" : x.bed);
                 arr.put(o);
             }
             sp.edit().putString("members", arr.toString()).apply();

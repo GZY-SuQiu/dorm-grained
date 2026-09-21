@@ -77,7 +77,7 @@ public class CalendarSync {
             long end = start + 15L * 3600_000; // 22:00
             ContentValues v = new ContentValues();
             v.put(CalendarContract.Events.CALENDAR_ID, calId);
-            v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", names));
+            v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", store.dutyDisplayOf(d)));
             v.put(CalendarContract.Events.DESCRIPTION, makeTag(d, names));
             v.put(CalendarContract.Events.DTSTART, start);
             v.put(CalendarContract.Events.DTEND, end);
@@ -185,7 +185,7 @@ public class CalendarSync {
                 long end = start + 15L * 3600_000;
                 ContentValues v = new ContentValues();
                 v.put(CalendarContract.Events.CALENDAR_ID, calId);
-                v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", names));
+                v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", store.dutyDisplayOf(d)));
                 v.put(CalendarContract.Events.DESCRIPTION, expect);
                 v.put(CalendarContract.Events.DTSTART, start);
                 v.put(CalendarContract.Events.DTEND, end);
@@ -211,7 +211,7 @@ public class CalendarSync {
                     long end = start + 15L * 3600_000;
                     ContentValues v = new ContentValues();
                     v.put(CalendarContract.Events.CALENDAR_ID, calId);
-                    v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", names));
+                    v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", store.dutyDisplayOf(d)));
                     v.put(CalendarContract.Events.DESCRIPTION, expect);
                     v.put(CalendarContract.Events.DTSTART, start);
                     v.put(CalendarContract.Events.DTEND, end);
