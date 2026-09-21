@@ -22,7 +22,7 @@ import java.util.List;
 
 /**
  * 底部专属菜单（4 Tab）：今日值日 / 排班 / 成员 / 设置。
- * 每个 Tab 独立页面，卡片式布局，纯原生 View 无 AndroidX。
+ * 设计语言：白卡片 + 分组列表 + 统一圆底字符图标，主色 #2E7D32。
  */
 public class MainActivity extends Activity {
 
@@ -36,11 +36,13 @@ public class MainActivity extends Activity {
     private TextView titleMain, hintView;
     private final TextView[] tabIcons = new TextView[4];
     private final TextView[] tabLabels = new TextView[4];
+    private int currentTab;
 
-    private static final String[] TAB_ICONS = {"📋", "🗓", "👥", "⚙"};
     private static final String[] TAB_LABELS = {"今日值日", "排班", "成员", "设置"};
+    private static final char[] TAB_CHARS = {'值', '排', '员', '设'};
 
     private static final int C_MAIN = Color.parseColor("#1B5E20");
+    private static final String C_ACCENT = "#2E7D32";
     private static final DateTimeFormatter D_FMT = DateTimeFormatter.ofPattern("M月d日 EEE");
 
     @Override
@@ -50,8 +52,7 @@ public class MainActivity extends Activity {
         store = new DataStore(this);
         calSync = new CalendarSync(this, store);
         buildUi();
-        // Android 15+（targetSdk35）强制边到边：内容会延伸到状态栏/手势栏后面，
-        // 必须自己按系统 insets 加 padding，否则标题被状态栏压住
+        // Android 15+（targetSdk35）强制边到边：按系统 insets 避让状态栏/手势栏
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             android.graphics.Insets sys = insets.getSystemWindowInsets();
             int pad = dp(16);
@@ -138,23 +139,25 @@ public class MainActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         bar.addView(titleMain);
         hintView = makeText(12, Color.GRAY);
-        hintView.setText(store.memberCount() + " 人寝室 · 每天 " + store.perDay() + " 人");
+        hintView.setText(store.memberCount() + " 人 · 每天 " + store.perDay() + " 人值日");
         bar.addView(hintView);
         return bar;
     }
 
+    /** 底部菜单：统一圆底字符图标，选中绿色、未选中浅灰，高度固定对齐 */
     private View buildTabBar() {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
         wrap.setBackgroundColor(Color.WHITE);
         View line = new View(this);
-        line.setBackgroundColor(Color.parseColor("#E0E0E0"));
+        line.setBackgroundColor(Color.parseColor("#E8E8E8"));
         line.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(1)));
         wrap.addView(line);
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setPadding(0, dp(6), 0, dp(8));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(0, dp(8), 0, dp(4));
         bar.setBackgroundColor(Color.WHITE);
         wrap.addView(bar);
         for (int i = 0; i < 4; i++) {
@@ -164,19 +167,33 @@ public class MainActivity extends Activity {
             tab.setGravity(Gravity.CENTER);
             tab.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-            tabIcons[i] = makeText(18, Color.parseColor("#9E9E9E"));
-            tabIcons[i].setText(TAB_ICONS[i]);
-            tabLabels[i] = makeText(11, Color.parseColor("#9E9E9E"));
+
+            TextView circle = new TextView(this);
+            circle.setText(String.valueOf(TAB_CHARS[i]));
+            circle.setTextSize(15);
+            circle.setTypeface(circle.getTypeface(), Typeface.BOLD);
+            circle.setGravity(Gravity.CENTER);
+            GradientDrawable cd = new GradientDrawable();
+            cd.setShape(GradientDrawable.OVAL);
+            cd.setColor(Color.parseColor("#ECEFF1"));
+            circle.setBackground(cd);
+            int cs = dp(38);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(cs, cs);
+            tab.addView(circle, clp);
+            circle.setTextColor(Color.parseColor("#546E7A"));
+            tabIcons[i] = circle;
+
+            tabLabels[i] = makeText(11, Color.parseColor("#757575"));
             tabLabels[i].setText(TAB_LABELS[i]);
-            tab.addView(tabIcons[i]);
+            tabLabels[i].setPadding(0, dp(4), 0, 0);
             tab.addView(tabLabels[i]);
+
             tab.setOnClickListener(v -> selectTab(ti));
             bar.addView(tab);
         }
         return wrap;
     }
 
-    /** 切换页面 + 刷新菜单高亮 */
     private void selectTab(int i) {
         currentTab = i;
         svToday.setVisibility(i == 0 ? View.VISIBLE : View.GONE);
@@ -185,14 +202,13 @@ public class MainActivity extends Activity {
         svSettings.setVisibility(i == 3 ? View.VISIBLE : View.GONE);
         for (int k = 0; k < 4; k++) {
             boolean on = k == i;
-            int c = on ? C_MAIN : Color.parseColor("#9E9E9E");
-            tabIcons[k].setTextColor(c);
-            tabLabels[k].setTextColor(c);
-            tabIcons[k].setTypeface(tabIcons[k].getTypeface(), on ? Typeface.BOLD : Typeface.NORMAL);
+            ((GradientDrawable) tabIcons[k].getBackground())
+                    .setColor(on ? Color.parseColor(C_ACCENT) : Color.parseColor("#ECEFF1"));
+            tabIcons[k].setTextColor(on ? Color.WHITE : Color.parseColor("#546E7A"));
+            tabLabels[k].setTextColor(on ? C_MAIN : Color.parseColor("#757575"));
+            tabLabels[k].setTypeface(tabLabels[k].getTypeface(), on ? Typeface.BOLD : Typeface.NORMAL);
         }
     }
-
-    private int currentTab;
 
     // ============================ 页1：今日值日 ============================
 
@@ -210,7 +226,7 @@ public class MainActivity extends Activity {
         TextView label = makeText(13, Color.GRAY);
         label.setText("今日值日");
         card.addView(label);
-        TextView big = makeText(26, C_MAIN);
+        TextView big = makeText(28, C_MAIN);
         big.setTypeface(big.getTypeface(), Typeface.BOLD);
         big.setText(names.isEmpty() ? "还没有人" : String.join("  ", names));
         card.addView(big);
@@ -225,7 +241,7 @@ public class MainActivity extends Activity {
             final List<String> nn = names;
             final boolean wasAllDone = allDone;
             View btn = bigChip(allDone ? "✓ 今日值日完成 · 点我撤销" : "去签到",
-                    allDone ? "#4CAF50" : "#2E7D32");
+                    allDone ? "#4CAF50" : C_ACCENT);
             btn.setOnClickListener(v -> {
                 for (String n : nn) store.toggleCheck(today.toString(), n);
                 renderAll();
@@ -257,7 +273,7 @@ public class MainActivity extends Activity {
 
     private void renderPlan() {
         pagePlan.removeAllViews();
-        pagePlan.addView(sectionHeader("未来 7 天排班"));
+        pagePlan.addView(sectionHeader("未来 7 天"));
         LocalDate today = LocalDate.now();
         for (int i = 0; i < 7; i++) {
             LocalDate d = today.plusDays(i);
@@ -283,7 +299,6 @@ public class MainActivity extends Activity {
             TextView date = makeText(14, i == 0 ? C_MAIN : Color.DKGRAY);
             date.setTypeface(date.getTypeface(), i == 0 ? Typeface.BOLD : Typeface.NORMAL);
             date.setText((i == 0 ? "今天 · " : "") + d.format(D_FMT));
-            date.setGravity(Gravity.START);
             date.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f));
             row.addView(date);
@@ -297,12 +312,14 @@ public class MainActivity extends Activity {
             row.addView(duty);
 
             if (i == 0 && !names.isEmpty()) {
-                row.addView(chip(allDone ? "✓ 已签" : "未签", allDone ? "#4CAF50" : "#E65100"));
+                row.addView(softChip(allDone ? "✓ 已签" : "未签",
+                        allDone ? "#E8F5E9" : "#FFF3E0",
+                        allDone ? "#2E7D32" : "#E65100"));
             }
             pagePlan.addView(row);
         }
         TextView note = makeText(12, Color.GRAY);
-        note.setText("完整排班在「设置」页可一键同步到系统日历。");
+        note.setText("完整排班可在「设置」页一键同步到系统日历。");
         note.setPadding(0, dp(4), 0, 0);
         pagePlan.addView(note);
     }
@@ -311,8 +328,14 @@ public class MainActivity extends Activity {
 
     private void renderMembers() {
         pageMembers.removeAllViews();
-        pageMembers.addView(sectionHeader("成员 · 值日名单"));
+        pageMembers.addView(sectionHeader("值日名单"));
         List<DataStore.Member> ms = store.members();
+
+        TextView cnt = makeText(12, Color.GRAY);
+        cnt.setText("共 " + ms.size() + " 人 · 最多 12 · 每天 " + store.perDay() + " 人值日"
+                + (ms.size() < 4 ? "（至少 4 人）" : ""));
+        pageMembers.addView(cnt);
+
         for (int i = 0; i < ms.size(); i++) {
             final int idx = i;
             final DataStore.Member m = ms.get(i);
@@ -332,73 +355,70 @@ public class MainActivity extends Activity {
             rlp.setMargins(0, 0, 0, dp(8));
             row.setLayoutParams(rlp);
 
-            // 姓名首字圆形头像
-            TextView avatar = makeText(15, Color.WHITE);
+            // 头像圆
+            TextView avatar = new TextView(this);
+            avatar.setText(String.valueOf(m.name.isEmpty() ? '·' : m.name.charAt(0)));
+            avatar.setTextSize(15);
             avatar.setTypeface(avatar.getTypeface(), Typeface.BOLD);
             avatar.setGravity(Gravity.CENTER);
-            avatar.setText(String.valueOf(m.name.isEmpty() ? '·' : m.name.charAt(0)));
+            avatar.setTextColor(m.leader ? Color.WHITE : Color.parseColor("#546E7A"));
             GradientDrawable ab = new GradientDrawable();
             ab.setShape(GradientDrawable.OVAL);
-            ab.setColor(Color.parseColor(m.leader ? "#1B5E20" : "#90A4AE"));
+            ab.setColor(Color.parseColor(m.leader ? C_ACCENT : "#ECEFF1"));
             avatar.setBackground(ab);
-            int as = dp(38);
+            int as = dp(40);
             LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(as, as);
-            alp.setMargins(0, 0, dp(10), 0);
+            alp.setMargins(0, 0, dp(12), 0);
             row.addView(avatar, alp);
 
+            // 姓名 + 状态
             LinearLayout info = new LinearLayout(this);
             info.setOrientation(LinearLayout.VERTICAL);
             TextView nm = makeText(15, Color.parseColor("#212121"));
             nm.setTypeface(nm.getTypeface(), Typeface.BOLD);
             nm.setText(m.name);
             info.addView(nm);
-            if (m.leader) {
-                TextView l = makeText(11, C_MAIN);
-                l.setText("寝室长 👑");
-                info.addView(l);
-            }
+            TextView st = makeText(11, Color.parseColor(m.leader ? C_ACCENT : "#9E9E9E"));
+            st.setText(m.leader ? "寝室长" : "成员");
+            info.addView(st);
             info.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
             row.addView(info);
 
             if (!m.leader) {
-                View setL = chip("设为寝室长", "#1976D2");
+                View setL = softChip("设为寝室长", "#E3F2FD", "#1976D2");
                 setL.setOnClickListener(v -> {
                     store.setLeader(idx, true);
                     renderAll();
                     ToastSafe.show(this, m.name + " 已是寝室长");
                 });
                 row.addView(setL);
+                View del = softChip("删除", "#FFEBEE", "#C62828");
+                del.setOnClickListener(v -> {
+                    store.removeMember(idx);
+                    renderAll();
+                    ToastSafe.show(this, m.name + " 已移出名单");
+                });
+                row.addView(del);
             }
-            View del = chip("删除", "#C62828");
-            del.setOnClickListener(v -> {
-                store.removeMember(idx);
-                renderAll();
-                ToastSafe.show(this, m.name + " 已移出名单");
-            });
-            row.addView(del);
-
             pageMembers.addView(row);
         }
 
-        if (ms.size() < 4) {
-            TextView warn = makeText(12, Color.parseColor("#C62828"));
-            warn.setText("⚠ 寝室至少 4 人（4~12 人间）");
-            warn.setPadding(0, dp(4), 0, dp(4));
-            pageMembers.addView(warn);
-        }
-
+        // 添加成员：输入框 + 按钮同一行
+        LinearLayout addCard = card();
+        addCard.setOrientation(LinearLayout.HORIZONTAL);
+        addCard.setGravity(Gravity.CENTER_VERTICAL);
         final EditText et = new EditText(this);
-        et.setHint("新成员姓名（最多 12 字）");
+        et.setHint("新成员姓名");
+        et.setTextSize(14);
         et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
-        et.setBackgroundColor(Color.WHITE);
-        et.setPadding(dp(10), dp(10), dp(10), dp(10));
-        et.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)));
-        pageMembers.addView(et);
-
-        View add = bigChip("＋ 添加成员", "#2E7D32");
-        add.setOnClickListener(v -> {
+        et.setBackground(null);
+        LinearLayout.LayoutParams elp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        et.setLayoutParams(elp);
+        addCard.addView(et);
+        View addBtn = solidButton("＋ 添加", C_ACCENT);
+        addBtn.setOnClickListener(v -> {
             String name = et.getText().toString().trim();
             if (name.isEmpty()) return;
             if (store.memberCount() >= 12) {
@@ -414,109 +434,118 @@ public class MainActivity extends Activity {
             renderAll();
             ToastSafe.show(this, name + " 已加入");
         });
-        pageMembers.addView(add);
-
-        TextView tip = makeText(12, Color.GRAY);
-        tip.setText("值日按此名单顺序轮转，寝室长仅作为标识。");
-        tip.setPadding(0, dp(8), 0, 0);
-        pageMembers.addView(tip);
+        addCard.addView(addBtn);
+        pageMembers.addView(addCard);
     }
 
     // ============================ 页4：设置 ============================
 
     private void renderSettings() {
         pageSettings.removeAllViews();
-        pageSettings.addView(sectionHeader("设置 · 日历同步"));
+        pageSettings.addView(sectionHeader("设置"));
 
-        View setName = chip("重命名寝室 · 当前 [" + store.roomName() + "]", "#1976D2");
-        setName.setOnClickListener(v -> {
-            final EditText et = new EditText(this);
-            et.setText(store.roomName());
-            et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16)});
-            new AlertDialog.Builder(this)
-                    .setTitle("寝室名称")
-                    .setView(et)
-                    .setPositiveButton("保存", (d, w) -> {
-                        String n = et.getText().toString().trim();
-                        if (!n.isEmpty()) {
-                            store.setRoomName(n);
-                            renderAll();
-                        }
-                    })
-                    .show();
-        });
-        pageSettings.addView(setName);
+        // —— 基本设置 ——
+        pageSettings.addView(groupHeader("基本设置"));
+        LinearLayout g1 = card();
+        g1.addView(settingRow("寝", "#E8F5E9", "#2E7D32",
+                "寝室名称", "用于顶栏与日历事件显示", store.roomName(),
+                v -> {
+                    final EditText et = new EditText(this);
+                    et.setText(store.roomName());
+                    et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16)});
+                    new AlertDialog.Builder(this)
+                            .setTitle("寝室名称")
+                            .setView(et)
+                            .setPositiveButton("保存", (d, w) -> {
+                                String n = et.getText().toString().trim();
+                                if (!n.isEmpty()) {
+                                    store.setRoomName(n);
+                                    renderAll();
+                                }
+                            })
+                            .show();
+                }));
+        g1.addView(divider());
+        g1.addView(settingRow("日", "#E8F5E9", "#2E7D32",
+                "值日起始日期", "排班从此日期开始轮转", store.startDate().format(D_FMT),
+                v -> {
+                    final EditText et = new EditText(this);
+                    et.setHint("如 2026-09-21 或 今天/明天");
+                    new AlertDialog.Builder(this)
+                            .setTitle("排班起始日期")
+                            .setView(et)
+                            .setPositiveButton("保存", (d, w) -> {
+                                String s = et.getText().toString().trim();
+                                LocalDate dd = parseDate(s);
+                                if (dd != null) {
+                                    store.setStartDate(dd);
+                                    renderAll();
+                                }
+                            })
+                            .show();
+                }));
+        pageSettings.addView(g1);
 
-        View setDate = chip("值日起始日期：" + store.startDate().format(D_FMT), "#1976D2");
-        setDate.setOnClickListener(v -> {
-            final EditText et = new EditText(this);
-            et.setHint("如 2026-09-21 或 今天/明天");
-            new AlertDialog.Builder(this)
-                    .setTitle("排班起始日期")
-                    .setView(et)
-                    .setPositiveButton("保存", (d, w) -> {
-                        String s = et.getText().toString().trim();
-                        LocalDate dd = parseDate(s);
-                        if (dd != null) {
-                            store.setStartDate(dd);
-                            renderAll();
-                        }
-                    })
-                    .show();
-        });
-        pageSettings.addView(setDate);
+        // —— 轮换 ——
+        pageSettings.addView(groupHeader("轮换"));
+        LinearLayout g2 = card();
+        g2.addView(settingRow("重", "#FFF3E0", "#E65100",
+                "重置轮换", "从名单第 1 位重新开始排班", "重置",
+                v -> {
+                    store.setStartIndex(0);
+                    renderAll();
+                    ToastSafe.show(this, "轮换已重置");
+                }));
+        pageSettings.addView(g2);
 
-        View startOver = chip("重置轮换（从第 1 位重新开始）", "#E65100");
-        startOver.setOnClickListener(v -> {
-            store.setStartIndex(0);
-            renderAll();
-            ToastSafe.show(this, "轮换已重置");
-        });
-        pageSettings.addView(startOver);
+        // —— 日历同步 ——
+        pageSettings.addView(groupHeader("日历同步"));
+        LinearLayout g3 = card();
+        g3.addView(settingRow("历", "#E8F5E9", "#2E7D32",
+                "写入系统日历", "未来 7 天 · 每天 7:00 提醒", "写入",
+                v -> {
+                    int n = calSync.syncDuty(7);
+                    if (n < 0) {
+                        ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
+                        requestPermissions();
+                    } else {
+                        ToastSafe.show(this, "已写入 " + n + " 条值日事件");
+                    }
+                }));
+        g3.addView(divider());
+        g3.addView(settingRow("盾", "#E3F2FD", "#1976D2",
+                "校验并修复", "本地日历被删改时一键还原", "校验",
+                v -> {
+                    int[] r = calSync.verifyAndRepair(7);
+                    if (r == null) {
+                        ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
+                        requestPermissions();
+                    } else {
+                        ToastSafe.show(this, String.format("校验完成：补齐 %d · 重写 %d · 删除 %d",
+                                r[0], r[1], r[2]));
+                    }
+                }));
+        pageSettings.addView(g3);
 
-        View sync = chip("📅 写入系统日历（未来 7 天）", "#2E7D32");
-        sync.setOnClickListener(v -> {
-            int n = calSync.syncDuty(7);
-            if (n < 0) {
-                ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
-                requestPermissions();
-            } else {
-                ToastSafe.show(this, "已写入 " + n + " 条值日事件");
-            }
-        });
-        pageSettings.addView(sync);
-
-        View verify = chip("🛡 校验并修复本地日历（防篡改）", "#2E7D32");
-        verify.setOnClickListener(v -> {
-            int[] r = calSync.verifyAndRepair(7);
-            if (r == null) {
-                ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
-                requestPermissions();
-            } else {
-                ToastSafe.show(this, String.format("校验完成：补齐 %d · 重写 %d · 删除 %d",
-                        r[0], r[1], r[2]));
-            }
-        });
-        pageSettings.addView(verify);
-
+        // —— 诊断 ——
+        pageSettings.addView(groupHeader("诊断"));
         String crashSummary = CrashLog.lastSummary(this);
-        View crashRow = chip(crashSummary.isEmpty()
-                ? "💾 崩溃日志（无记录）"
-                : "💾 最近崩溃：" + crashSummary,
-                crashSummary.isEmpty() ? "#607D8B" : "#B71C1C");
-        crashRow.setOnClickListener(v -> {
-            String full = CrashLog.last(this);
-            new AlertDialog.Builder(this)
-                    .setTitle("最近一次崩溃日志")
-                    .setMessage(full.isEmpty() ? "暂无崩溃记录" : full)
-                    .setPositiveButton("知道了", null)
-                    .show();
-        });
-        pageSettings.addView(crashRow);
+        LinearLayout g4 = card();
+        g4.addView(settingRow("崩", crashSummary.isEmpty() ? "#ECEFF1" : "#FFEBEE",
+                crashSummary.isEmpty() ? "#607D8B" : "#B71C1C",
+                "崩溃日志", crashSummary.isEmpty() ? "暂无记录" : "最近：" + crashSummary, "查看",
+                v -> {
+                    String full = CrashLog.last(this);
+                    new AlertDialog.Builder(this)
+                            .setTitle("最近一次崩溃日志")
+                            .setMessage(full.isEmpty() ? "暂无崩溃记录" : full)
+                            .setPositiveButton("知道了", null)
+                            .show();
+                }));
+        pageSettings.addView(g4);
 
         TextView note = makeText(12, Color.GRAY);
-        note.setText("排班数据以 App 内存储为准；系统日历仅作展示与提醒，"
-                + "被手动删改时点「校验并修复」一键还原。");
+        note.setText("排班数据以 App 内存储为准；系统日历仅作展示与提醒。");
         note.setPadding(0, dp(10), 0, 0);
         pageSettings.addView(note);
     }
@@ -525,7 +554,7 @@ public class MainActivity extends Activity {
 
     private void renderAll() {
         titleMain.setText("🏠 寝室值日 · " + store.roomName());
-        hintView.setText(store.memberCount() + " 人寝室 · 每天 " + store.perDay() + " 人");
+        hintView.setText(store.memberCount() + " 人 · 每天 " + store.perDay() + " 人值日");
         renderToday();
         renderPlan();
         renderMembers();
@@ -543,14 +572,24 @@ public class MainActivity extends Activity {
         h.setText(text);
         wrap.addView(h);
         View line = new View(this);
-        line.setBackgroundColor(Color.parseColor("#2E7D32"));
-        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(2));
-        line.setLayoutParams(llp);
+        line.setBackgroundColor(Color.parseColor(C_ACCENT));
+        line.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(2)));
         wrap.addView(line);
         return wrap;
     }
 
+    private View groupHeader(String text) {
+        TextView h = makeText(12, Color.parseColor("#607D8B"));
+        h.setTypeface(h.getTypeface(), Typeface.BOLD);
+        h.setText(text);
+        h.setPadding(0, dp(14), 0, dp(6));
+        h.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return h;
+    }
+
+    /** 白卡片容器 */
     private LinearLayout card() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
@@ -566,6 +605,63 @@ public class MainActivity extends Activity {
         lp.setMargins(0, 0, 0, dp(10));
         c.setLayoutParams(lp);
         return c;
+    }
+
+    /** 设置行：左圆图标 + 中标题副标题 + 右侧操作词 */
+    private View settingRow(String icon, String iconBg, String iconFg,
+                            String title, String subtitle, String right,
+                            View.OnClickListener click) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int p = dp(12);
+        row.setPadding(p, p, p, p);
+        if (click != null) row.setOnClickListener(click);
+
+        TextView ic = new TextView(this);
+        ic.setText(icon);
+        ic.setTextSize(13);
+        ic.setTypeface(ic.getTypeface(), Typeface.BOLD);
+        ic.setTextColor(Color.parseColor(iconFg));
+        ic.setGravity(Gravity.CENTER);
+        GradientDrawable cd = new GradientDrawable();
+        cd.setShape(GradientDrawable.OVAL);
+        cd.setColor(Color.parseColor(iconBg));
+        ic.setBackground(cd);
+        int cs = dp(32);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(cs, cs);
+        clp.setMargins(0, 0, dp(12), 0);
+        row.addView(ic, clp);
+
+        LinearLayout mid = new LinearLayout(this);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        TextView t = makeText(14, Color.parseColor("#212121"));
+        t.setText(title);
+        mid.addView(t);
+        TextView s = makeText(11, Color.parseColor("#9E9E9E"));
+        s.setText(subtitle);
+        mid.addView(s);
+        mid.setLayoutParams(new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        row.addView(mid);
+
+        if (right != null) {
+            TextView r = makeText(13, Color.parseColor("#B0BEC5"));
+            r.setText(right);
+            row.addView(r);
+        }
+        return row;
+    }
+
+    /** 卡片内分组分隔线（左缩进对齐正文） */
+    private View divider() {
+        View v = new View(this);
+        v.setBackgroundColor(Color.parseColor("#F2F2F2"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+        lp.setMargins(dp(56), 0, 0, 0);
+        v.setLayoutParams(lp);
+        return v;
     }
 
     /** 横向小行：左灰标签 + 右加粗值 */
@@ -587,24 +683,27 @@ public class MainActivity extends Activity {
         return r;
     }
 
-    private View chip(String text, String color) {
+    /** 浅色底 + 彩色文字的小胶囊（统一风格的操作钮） */
+    private View softChip(String text, String bg, String fg) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setTextColor(Color.WHITE);
-        tv.setTextSize(13);
+        tv.setTextSize(12);
+        tv.setTypeface(tv.getTypeface(), Typeface.BOLD);
+        tv.setTextColor(Color.parseColor(fg));
         tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dp(12), dp(8), dp(12), dp(8));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor(color));
-        bg.setCornerRadius(dp(16) * 1f);
-        tv.setBackground(bg);
+        tv.setPadding(dp(10), dp(6), dp(10), dp(6));
+        GradientDrawable b = new GradientDrawable();
+        b.setColor(Color.parseColor(bg));
+        b.setCornerRadius(dp(12) * 1f);
+        tv.setBackground(b);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+        lp.setMargins(dp(4), 0, dp(4), 0);
         tv.setLayoutParams(lp);
         return tv;
     }
 
+    /** 实心大按钮（页面主操作） */
     private View bigChip(String text, String color) {
         TextView tv = new TextView(this);
         tv.setText(text);
@@ -620,6 +719,26 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, 0, 0, dp(10));
+        tv.setLayoutParams(lp);
+        return tv;
+    }
+
+    /** 实心小按钮（行内操作） */
+    private View solidButton(String text, String color) {
+        TextView tv = new TextView(this);
+        tv.setText(text);
+        tv.setTextColor(Color.WHITE);
+        tv.setTextSize(13);
+        tv.setTypeface(tv.getTypeface(), Typeface.BOLD);
+        tv.setGravity(Gravity.CENTER);
+        tv.setPadding(dp(16), dp(9), dp(16), dp(9));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.parseColor(color));
+        bg.setCornerRadius(dp(10) * 1f);
+        tv.setBackground(bg);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(8), 0, 0, 0);
         tv.setLayoutParams(lp);
         return tv;
     }
