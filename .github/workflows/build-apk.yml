@@ -33,7 +33,23 @@ jobs:
           gradle-version: '8.10'
 
       - name: Build APK (debug, auto-signed & installable)
-        run: gradle assembleDebug --no-daemon
+        run: |
+          if gradle assembleDebug --no-daemon > build-output.log 2>&1; then
+            echo "BUILD OK"
+            tail -3 build-output.log
+          else
+            echo "BUILD FAILED — 完整日志已存到 dist 分支（build-error.log）"
+            tail -100 build-output.log
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            cp build-output.log build-error.log
+            git add -f build-error.log
+            git commit -m "ci: build error log $(date -u +%H:%M:%SZ)" || true
+            git branch -f dist
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            git push --force origin dist || echo "WARN: 无法推送错误日志到 dist"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
