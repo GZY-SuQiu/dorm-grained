@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.GridLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -59,6 +60,10 @@ public class DatePickDialog {
         dlg.setContentView(buildView());
         dlg.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
         dlg.show();
+        // 固定宽度（屏幕 88%）+ 高度自适应：否则宽度由内容决定会被压窄，
+        // 7 列网格挤在一起、日期圆圈压扁
+        int w = (int) (ctx.getResources().getDisplayMetrics().widthPixels * 0.88f);
+        dlg.getWindow().setLayout(w, WindowManager.LayoutParams.WRAP_CONTENT);
     }
 
     private LinearLayout buildView() {

@@ -132,7 +132,7 @@ public class MainActivity extends Activity {
         });
     }
 
-    /** 切换主题后重刷全局配色（背景、状态栏、底部菜单） */
+    /** 切换主题后重刷全局配色（背景、状态栏、底部菜单、顶栏标题） */
     private void refreshTheme() {
         root.setBackgroundColor(t.windowBg);
         getWindow().setStatusBarColor(t.main);
@@ -140,6 +140,12 @@ public class MainActivity extends Activity {
             tabWrap.setBackgroundColor(t.cardBg);
             tabInner.setBackgroundColor(t.cardBg);
             tabLine.setBackgroundColor(t.cardStroke);
+        }
+        if (titleMain != null) {
+            // 顶栏标题与底部菜单是常驻视图，不会随 renderAll 重建，颜色要手动刷
+            titleMain.setTextColor(t.mainDark);
+            hintView.setTextColor(t.textSecondary);
+            selectTab(currentTab);
         }
     }
 
