@@ -793,10 +793,10 @@ public class MainActivity extends Activity {
         g3.addView(settingRow("历", t.tabOffBg, t.textPrimary,
                 "写入系统日历", "未来 7 天 · 每天 7:00 提醒", "写入",
                 v -> {
+                    if (!calPermitted()) return;
                     int n = calSync.syncDuty(7);
                     if (n < 0) {
-                        ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
-                        requestPermissions();
+                        ToastSafe.show(this, "找不到可写的日历：请用下方「写入目标日历」手动指定，或检查系统日历是否可用");
                     } else {
                         ToastSafe.show(this, "已写入 " + n + " 条值日事件");
                     }
@@ -805,14 +805,40 @@ public class MainActivity extends Activity {
         g3.addView(settingRow("盾", 0xFFE3F2FD, 0xFF1976D2,
                 "校验并修复", "本地日历被删改时一键还原", "校验",
                 v -> {
+                    if (!calPermitted()) return;
                     int[] r = calSync.verifyAndRepair(7);
                     if (r == null) {
-                        ToastSafe.show(this, "日历不可用：请授予日历权限后重试");
-                        requestPermissions();
+                        ToastSafe.show(this, "找不到可写的日历：请用「写入目标日历」手动指定");
                     } else {
                         ToastSafe.show(this, String.format("校验完成：补齐 %d · 重写 %d · 删除 %d",
                                 r[0], r[1], r[2]));
                     }
+                }));
+        g3.addView(divider());
+        g3.addView(settingRow("选", t.tabOffBg, t.textPrimary,
+                "写入目标日历", calTargetDesc(), "选择",
+                v -> {
+                    java.util.List<CalendarSync.CalInfo> cals = calSync.listWritable();
+                    if (cals.isEmpty() && store.selectedCalendarId() <= 0) {
+                        ToastSafe.show(this, "设备上没有可写日历：请确认已授予日历权限且系统装有日历应用");
+                        return;
+                    }
+                    int sel = store.selectedCalendarId();
+                    String[] items = new String[cals.size() + 1];
+                    items[0] = "自动（优先自建「寝室值日表」）";
+                    int checked = 0;
+                    for (int i = 0; i < cals.size(); i++) {
+                        items[i + 1] = cals.get(i).name;
+                        if (cals.get(i).id == sel) checked = i + 1;
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle("选择写入目标日历")
+                            .setSingleChoiceItems(items, checked, (d, w) -> {
+                                store.setSelectedCalendarId(w == 0 ? 0 : cals.get(w - 1).id);
+                                renderAll();
+                                ToastSafe.show(this, "目标已更新");
+                            })
+                            .show();
                 }));
         pageSettings.addView(g3);
 
@@ -1174,6 +1200,32 @@ public class MainActivity extends Activity {
     /** 格式化提醒时间 07:00 */
     private String fmtTime(DataStore s) {
         return String.format("%02d:%02d", s.reminderHour(), s.reminderMinute());
+    }
+
+    /** 日历读+写权限是否齐全；不齐全则弹出系统授权并返回 false */
+    private boolean calPermitted() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.READ_CALENDAR)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    || checkSelfPermission(android.Manifest.permission.WRITE_CALENDAR)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{
+                        Manifest.permission.READ_CALENDAR,
+                        Manifest.permission.WRITE_CALENDAR}, 101);
+                ToastSafe.show(this, "请先授予日历权限");
+                return false;
+            }
+        } catch (Exception ignored) {}
+        return true;
+    }
+
+    /** 「写入目标日历」当前指向的描述 */
+    private String calTargetDesc() {
+        int sel = store.selectedCalendarId();
+        if (sel <= 0) return "自动（优先自建「寝室值日表」）";
+        for (CalendarSync.CalInfo ci : calSync.listWritable())
+            if (ci.id == sel) return ci.name;
+        return "已指定 #" + sel + "（可能已失效，将自动回退）";
     }
 
     private void requestPermissions() {

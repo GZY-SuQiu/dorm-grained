@@ -129,6 +129,11 @@ public class DataStore {
         sp.edit().putInt("reminder_hour", h).putInt("reminder_minute", m).apply();
     }
 
+    // ---------- 日历目标 ----------
+    /** 手动指定的写入日历 id；0 = 自动（优先自建 DormDuty，失败回退系统日历） */
+    public int selectedCalendarId() { return sp.getInt("cal_id", 0); }
+    public void setSelectedCalendarId(int v) { sp.edit().putInt("cal_id", v).apply(); }
+
     // ---------- 备份 / 恢复 ----------
     /** 导出全部数据为 JSON 字符串 */
     public String exportAll() {
@@ -144,6 +149,7 @@ public class DataStore {
             o.put("reminder_hour", sp.getInt("reminder_hour", 7));
             o.put("reminder_minute", sp.getInt("reminder_minute", 0));
             o.put("theme_index", sp.getInt("theme_index", 0));
+            o.put("cal_id", sp.getInt("cal_id", 0));
             JSONObject checks = new JSONObject();
             for (String k : sp.getAll().keySet())
                 if (k.startsWith("check_")) checks.put(k, sp.getAll().get(k));
@@ -168,6 +174,7 @@ public class DataStore {
             if (o.has("reminder_hour")) e.putInt("reminder_hour", o.getInt("reminder_hour"));
             if (o.has("reminder_minute")) e.putInt("reminder_minute", o.getInt("reminder_minute"));
             if (o.has("theme_index")) e.putInt("theme_index", o.getInt("theme_index"));
+            if (o.has("cal_id")) e.putInt("cal_id", o.getInt("cal_id"));
             if (o.has("checks")) {
                 JSONObject c = o.getJSONObject("checks");
                 java.util.Iterator<String> it = c.keys();

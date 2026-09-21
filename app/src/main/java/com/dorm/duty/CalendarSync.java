@@ -31,10 +31,23 @@ public class CalendarSync {
 
     public CalendarSync(Context c, DataStore s) { ctx = c; store = s; }
 
-    /** 找到或创建 DormDuty 本地日历，返回 calendarId；失败返回 -1 */
-    public long ensureCalendar() {
-        ContentResolver cr = ctx.getContentResolver();
-        try (Cursor cur = cr.query(
+    /** 解析目标日历：用户手选 > 我们的 DormDuty > 尝试创建 > 系统默认 > 任意可写；全失败 -1 */
+    public long resolveCalendarId() {
+        int sel = store.selectedCalendarId();
+        if (sel > 0 && calendarExists(sel)) return sel;
+        long own = findOwn();
+        if (own > 0) return own;
+        long created = createOwn();
+        if (created > 0) return created;
+        try {
+            long def = CalendarContract.Calendars.getDefaultCalendarId(ctx);
+            if (def > 0) return def;
+        } catch (Exception ignored) {}
+        return firstWritable();
+    }
+
+    private long findOwn() {
+        try (Cursor cur = ctx.getContentResolver().query(
                 CalendarContract.Calendars.CONTENT_URI,
                 new String[]{CalendarContract.Calendars._ID},
                 CalendarContract.Calendars.ACCOUNT_NAME + "=?",
@@ -42,7 +55,10 @@ public class CalendarSync {
             if (cur != null && cur.moveToFirst())
                 return cur.getLong(0);
         } catch (Exception ignored) {}
+        return -1;
+    }
 
+    private long createOwn() {
         ContentValues v = new ContentValues();
         v.put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT);
         v.put(CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL);
@@ -54,7 +70,7 @@ public class CalendarSync {
         v.put(CalendarContract.Calendars.VISIBLE, 1);
         v.put(CalendarContract.Calendars.SYNC_EVENTS, 1);
         try {
-            Uri uri = cr.insert(CalendarContract.Calendars.CONTENT_URI, v);
+            Uri uri = ctx.getContentResolver().insert(CalendarContract.Calendars.CONTENT_URI, v);
             if (uri == null) return -1;
             return Long.parseLong(uri.getLastPathSegment());
         } catch (Exception e) {
@@ -62,9 +78,66 @@ public class CalendarSync {
         }
     }
 
+    private boolean calendarExists(long id) {
+        try (Cursor c = ctx.getContentResolver().query(
+                CalendarContract.Calendars.CONTENT_URI,
+                new String[]{CalendarContract.Calendars._ID},
+                CalendarContract.Calendars._ID + "=?",
+                new String[]{String.valueOf(id)}, null)) {
+            return c != null && c.moveToFirst();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 设备里第一个可编辑（CAL_EDIT 及以上）的日历 */
+    private long firstWritable() {
+        try (Cursor c = ctx.getContentResolver().query(
+                CalendarContract.Calendars.CONTENT_URI,
+                new String[]{CalendarContract.Calendars._ID,
+                        CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL},
+                null, null, null)) {
+            if (c != null) while (c.moveToNext()) {
+                int lvl = c.getInt(1);
+                if (lvl >= CalendarContract.Calendars.CAL_EDIT) return c.getLong(0);
+            }
+        } catch (Exception ignored) {}
+        return -1;
+    }
+
+    public static class CalInfo {
+        public long id;
+        public String name;
+    }
+
+    /** 列出设备所有可写日历（供「写入目标日历」选择器） */
+    public List<CalInfo> listWritable() {
+        List<CalInfo> out = new ArrayList<>();
+        try (Cursor c = ctx.getContentResolver().query(
+                CalendarContract.Calendars.CONTENT_URI,
+                new String[]{CalendarContract.Calendars._ID,
+                        CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                        CalendarContract.Calendars.ACCOUNT_NAME,
+                        CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL},
+                null, null, null)) {
+            if (c != null) while (c.moveToNext()) {
+                int lvl = c.getInt(3);
+                if (lvl >= CalendarContract.Calendars.CAL_EDIT) {
+                    CalInfo ci = new CalInfo();
+                    ci.id = c.getLong(0);
+                    String display = c.getString(1);
+                    String acct = c.getString(2);
+                    ci.name = display + ((acct == null || acct.isEmpty()) ? "" : " · " + acct);
+                    out.add(ci);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
     /** 把从 today 起往后 days 天的排班写入日历（先清掉该日历本区间内旧事件） */
     public int syncDuty(int days) {
-        long calId = ensureCalendar();
+        long calId = resolveCalendarId();
         if (calId <= 0) return -1;
         clearRange(calId, days);
         ZoneId z = ZoneId.systemDefault();
@@ -151,7 +224,7 @@ public class CalendarSync {
      * 返回修复动作计数数组 {补齐, 重写, 删除}；-1 表示日历不可用。
      */
     public int[] verifyAndRepair(int days) {
-        long calId = ensureCalendar();
+        long calId = resolveCalendarId();
         if (calId <= 0) return null;
         int added = 0, repaired = 0, removed = 0;
         Map<String, String> cur = readEvents(calId, days);
