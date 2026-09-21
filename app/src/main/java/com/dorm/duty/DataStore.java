@@ -138,7 +138,11 @@ public class DataStore {
             if (o.has("reminder_enabled")) e.putBoolean("reminder_enabled", o.getBoolean("reminder_enabled"));
             if (o.has("checks")) {
                 JSONObject c = o.getJSONObject("checks");
-                for (String k : c.keys()) e.putString(k, c.getString(k));
+                java.util.Iterator<String> it = c.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    e.putString(k, c.getString(k));
+                }
             }
             e.apply();
             return true;
