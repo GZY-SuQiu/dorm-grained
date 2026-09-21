@@ -52,7 +52,7 @@ public class MainActivity extends Activity {
 
     /** 全局异常兜底：崩溃堆栈落盘，下次打开可查看 */
     private void installCrashHandler() {
-        Thread prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
             CrashLog.append(this, e);
             if (prev != null) prev.uncaughtException(t, e);
