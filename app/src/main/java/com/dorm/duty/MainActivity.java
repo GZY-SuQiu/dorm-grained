@@ -3,6 +3,10 @@ package com.dorm.duty;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.TimePickerDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -79,6 +83,8 @@ public class MainActivity extends Activity {
         selectTab(0);
         requestPermissions();
         renderAll();
+        // 提醒对齐：若已开启，重新武装明天定点（应用重启后状态可能漂移）
+        ReminderManager.scheduleDaily(this, store);
         // 首次启动：隐私协议确认（接受才进入，拒绝立即退出）
         if (!store.isPrivacyAccepted()) showPrivacyDialog();
     }
@@ -391,6 +397,40 @@ public class MainActivity extends Activity {
             }
             pagePlan.addView(row);
         }
+        // 过去 7 天值班历史
+        LinearLayout hist = card();
+        TextView hh = makeText(13, t.textSecondary);
+        hh.setText("过去 7 天值班");
+        hist.addView(hh);
+        for (int i = 6; i >= 1; i--) {
+            LocalDate hd = today.minusDays(i);
+            List<String> hs = store.dutyOf(hd);
+            boolean hDone = !hs.isEmpty()
+                    && hs.stream().allMatch(n -> store.isChecked(hd.toString(), n));
+            LinearLayout hr = new LinearLayout(this);
+            hr.setOrientation(LinearLayout.HORIZONTAL);
+            hr.setGravity(Gravity.CENTER_VERTICAL);
+            hr.setPadding(0, dp(5), 0, dp(5));
+            TextView hdate = makeText(12, t.textSecondary);
+            hdate.setText(hd.getMonthValue() + "月" + hd.getDayOfMonth() + "日");
+            hdate.setLayoutParams(new LinearLayout.LayoutParams(dp(54),
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            hr.addView(hdate);
+            TextView hname = makeText(13, t.textPrimary);
+            hname.setTypeface(hname.getTypeface(), Typeface.BOLD);
+            hname.setText(hs.isEmpty() ? "—" : String.join("、", hs));
+            hname.setGravity(Gravity.END);
+            hname.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            hr.addView(hname);
+            TextView hstat = makeText(12,
+                    hDone ? t.main : (hs.isEmpty() ? t.textSecondary : 0xFFE65100));
+            hstat.setText(hDone ? "✓ 已签" : (hs.isEmpty() ? "—" : "未签"));
+            hr.addView(hstat);
+            hist.addView(hr);
+        }
+        pagePlan.addView(hist);
+
         TextView note = makeText(12, t.textSecondary);
         note.setText("完整排班可在「设置」页一键同步到系统日历。");
         note.setPadding(0, dp(4), 0, 0);
@@ -458,6 +498,33 @@ public class MainActivity extends Activity {
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
             row.addView(info);
 
+            // 改名（所有成员可用）
+            View ren = softChip("改名", t.tabOffBg, t.tabOffFg);
+            ren.setOnClickListener(v -> {
+                final EditText et2 = new EditText(this);
+                et2.setText(m.name);
+                et2.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
+                et2.setHintTextColor(t.textSecondary);
+                new AlertDialog.Builder(this)
+                        .setTitle("修改姓名")
+                        .setView(et2)
+                        .setPositiveButton("保存", (d, w) -> {
+                            String nn = et2.getText().toString().trim();
+                            if (nn.isEmpty()) { ToastSafe.show(this, "姓名不能为空"); return; }
+                            if (nn.equals(m.name)) return;
+                            if (store.members().stream().anyMatch(x -> x.name.equals(nn))) {
+                                ToastSafe.show(this, "该姓名已在名单中");
+                                return;
+                            }
+                            store.renameMember(idx, nn);
+                            renderAll();
+                            ToastSafe.show(this, "已改名为 " + nn);
+                        })
+                        .setNegativeButton("取消", null)
+                        .show();
+            });
+            row.addView(ren);
+
             if (!m.leader) {
                 View setL = softChip("设为寝室长", 0xFFE3F2FD, 0xFF1976D2);
                 setL.setOnClickListener(v -> {
@@ -467,11 +534,16 @@ public class MainActivity extends Activity {
                 });
                 row.addView(setL);
                 View del = softChip("删除", 0xFFFFEBEE, 0xFFC62828);
-                del.setOnClickListener(v -> {
-                    store.removeMember(idx);
-                    renderAll();
-                    ToastSafe.show(this, m.name + " 已移出名单");
-                });
+                del.setOnClickListener(v -> new AlertDialog.Builder(this)
+                        .setTitle("删除成员")
+                        .setMessage("确认将 " + m.name + " 移出值日名单？排班会重新计算，且无法撤销。")
+                        .setPositiveButton("删除", (d, w) -> {
+                            store.removeMember(idx);
+                            renderAll();
+                            ToastSafe.show(this, m.name + " 已移出名单");
+                        })
+                        .setNegativeButton("取消", null)
+                        .show());
                 row.addView(del);
             }
             pageMembers.addView(row);
@@ -595,6 +667,29 @@ public class MainActivity extends Activity {
         }
         pageSettings.addView(g6);
 
+        // —— 值日提醒 ——
+        pageSettings.addView(groupHeader("值日提醒"));
+        LinearLayout gRem = card();
+        gRem.addView(settingRow("铃", t.tabOffBg, t.textPrimary,
+                "值日提醒", store.isReminderEnabled() ? ("已开 · 每天 " + fmtTime(store)) : "已关闭",
+                store.isReminderEnabled() ? "开" : "关",
+                v -> {
+                    boolean en = !store.isReminderEnabled();
+                    store.setReminderEnabled(en);
+                    ReminderManager.scheduleDaily(this, store);
+                    renderAll();
+                    ToastSafe.show(this, en ? ("提醒已开 · 每天 " + fmtTime(store) + " 通知") : "提醒已关闭");
+                }));
+        gRem.addView(divider());
+        gRem.addView(settingRow("时", t.tabOffBg, t.textPrimary,
+                "提醒时间", "每天几点发出通知", fmtTime(store),
+                v -> new TimePickerDialog(this, (tv, h, m) -> {
+                    store.setReminderTime(h, m);
+                    if (store.isReminderEnabled()) ReminderManager.scheduleDaily(this, store);
+                    renderAll();
+                }, store.reminderHour(), store.reminderMinute(), true).show()));
+        pageSettings.addView(gRem);
+
         // —— 轮换 ——
         pageSettings.addView(groupHeader("轮换"));
         LinearLayout g2 = card();
@@ -635,6 +730,51 @@ public class MainActivity extends Activity {
                     }
                 }));
         pageSettings.addView(g3);
+
+        // —— 数据备份 ——
+        pageSettings.addView(groupHeader("数据备份"));
+        LinearLayout gData = card();
+        gData.addView(settingRow("备", t.tabOffBg, t.textPrimary,
+                "备份数据", "复制全部数据到剪贴板，用于迁移新手机", "复制",
+                v -> {
+                    String json = store.exportAll();
+                    if (json == null) { ToastSafe.show(this, "备份失败"); return; }
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("dorm-duty-backup", json));
+                    ToastSafe.show(this, "数据已复制到剪贴板，去粘贴保存吧");
+                }));
+        gData.addView(divider());
+        gData.addView(settingRow("恢", t.tabOffBg, t.textPrimary,
+                "恢复数据", "从剪贴板粘贴旧手机备份覆盖当前数据", "恢复",
+                v -> {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    android.content.ClipData clip = (cm != null) ? cm.getPrimaryClip() : null;
+                    if (clip == null || clip.getItemCount() == 0) {
+                        new AlertDialog.Builder(this)
+                                .setTitle("恢复数据")
+                                .setMessage("剪贴板是空的。请先把旧手机复制的备份粘贴到剪贴板，再点此恢复。")
+                                .setPositiveButton("知道了", null).show();
+                        return;
+                    }
+                    new AlertDialog.Builder(this)
+                            .setTitle("恢复数据")
+                            .setMessage("将用剪贴板中的数据覆盖当前成员与排班，确定继续？")
+                            .setPositiveButton("恢复", (d, w) -> {
+                                String json = clip.getItemAt(0).getText().toString();
+                                if (store.importAll(json)) {
+                                    t = ThemeManager.get(this);
+                                    refreshTheme();
+                                    renderAll();
+                                    ReminderManager.scheduleDaily(this, store);
+                                    ToastSafe.show(this, "数据已恢复");
+                                } else {
+                                    ToastSafe.show(this, "恢复失败：内容不是有效备份");
+                                }
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                }));
+        pageSettings.addView(gData);
 
         // —— 隐私 ——
         pageSettings.addView(groupHeader("隐私"));
@@ -944,6 +1084,11 @@ public class MainActivity extends Activity {
 
     private int dp(int v) {
         return (int) Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    /** 格式化提醒时间 07:00 */
+    private String fmtTime(DataStore s) {
+        return String.format("%02d:%02d", s.reminderHour(), s.reminderMinute());
     }
 
     private void requestPermissions() {

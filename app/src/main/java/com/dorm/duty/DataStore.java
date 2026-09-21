@@ -85,6 +85,68 @@ public class DataStore {
         saveMembers(m);
     }
 
+    public void renameMember(int idx, String name) {
+        List<Member> m = members();
+        if (idx < 0 || idx >= m.size()) return;
+        m.get(idx).name = name;
+        saveMembers(m);
+    }
+
+    // ---------- 提醒 ----------
+    public boolean isReminderEnabled() { return sp.getBoolean("reminder_enabled", false); }
+    public void setReminderEnabled(boolean v) { sp.edit().putBoolean("reminder_enabled", v).apply(); }
+    public int reminderHour() { return sp.getInt("reminder_hour", 7); }
+    public int reminderMinute() { return sp.getInt("reminder_minute", 0); }
+    public void setReminderTime(int h, int m) {
+        sp.edit().putInt("reminder_hour", h).putInt("reminder_minute", m).apply();
+    }
+
+    // ---------- 备份 / 恢复 ----------
+    /** 导出全部数据为 JSON 字符串 */
+    public String exportAll() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("v", 1);
+            o.put("room_name", sp.getString("room_name", "我的寝室"));
+            o.put("start_epoch", sp.getLong("start_epoch", LocalDate.now().toEpochDay()));
+            o.put("start_index", sp.getInt("start_index", 0));
+            o.put("members", sp.getString("members", "[]"));
+            o.put("privacy_accepted", sp.getBoolean("privacy_accepted", false));
+            o.put("reminder_enabled", sp.getBoolean("reminder_enabled", false));
+            o.put("reminder_hour", sp.getInt("reminder_hour", 7));
+            o.put("reminder_minute", sp.getInt("reminder_minute", 0));
+            JSONObject checks = new JSONObject();
+            for (String k : sp.getAll().keySet())
+                if (k.startsWith("check_")) checks.put(k, sp.getAll().get(k));
+            o.put("checks", checks);
+            return o.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 从 JSON 字符串恢复全部数据；成功返回 true */
+    public boolean importAll(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            SharedPreferences.Editor e = sp.edit();
+            if (o.has("room_name")) e.putString("room_name", o.getString("room_name"));
+            if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
+            if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
+            if (o.has("members")) e.putString("members", o.getString("members"));
+            if (o.has("privacy_accepted")) e.putBoolean("privacy_accepted", o.getBoolean("privacy_accepted"));
+            if (o.has("reminder_enabled")) e.putBoolean("reminder_enabled", o.getBoolean("reminder_enabled"));
+            if (o.has("checks")) {
+                JSONObject c = o.getJSONObject("checks");
+                for (String k : c.keys()) e.putString(k, c.getString(k));
+            }
+            e.apply();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private void saveMembers(List<Member> m) {
         try {
             JSONArray arr = new JSONArray();
