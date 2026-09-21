@@ -50,6 +50,15 @@ public class MainActivity extends Activity {
         store = new DataStore(this);
         calSync = new CalendarSync(this, store);
         buildUi();
+        // Android 15+（targetSdk35）强制边到边：内容会延伸到状态栏/手势栏后面，
+        // 必须自己按系统 insets 加 padding，否则标题被状态栏压住
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets sys = insets.getSystemWindowInsets();
+            int pad = dp(16);
+            v.setPadding(pad, pad + sys.top, pad, pad + sys.bottom);
+            return insets;
+        });
+        root.requestApplyInsets();
         selectTab(0);
         requestPermissions();
         renderAll();
