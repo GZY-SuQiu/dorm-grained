@@ -138,6 +138,103 @@ public class DataStore {
     public String serverUrl() { return sp.getString("server_url", ""); }
     public void setServerUrl(String v) { sp.edit().putString("server_url", v == null ? "" : v.trim()).apply(); }
 
+    // ---------- 备份密钥（SQ-XXXX-XXXX-XXXX-XXXX-密文块） ----------
+    private static final String BACKUP_AES_KEY = "SQ_G_SuQiu_2026"; // 16 字节 AES-128 固定密钥
+    private static final String B36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    private static byte[] aesEncryptBytes(byte[] plain) {
+        try {
+            javax.crypto.SecretKeySpec ks = new javax.crypto.SecretKeySpec(
+                    BACKUP_AES_KEY.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
+            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/ECB/PKCS5Padding");
+            c.init(javax.crypto.Cipher.ENCRYPT_MODE, ks);
+            return c.doFinal(plain);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static byte[] aesDecryptBytes(byte[] enc) {
+        try {
+            javax.crypto.SecretKeySpec ks = new javax.crypto.SecretKeySpec(
+                    BACKUP_AES_KEY.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
+            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/ECB/PKCS5Padding");
+            c.init(javax.crypto.Cipher.DECRYPT_MODE, ks);
+            return c.doFinal(enc);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 字节 → 36 进制（每字节 2 个字符，全大写字母+数字） */
+    private static String toBase36(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            int v = b & 0xFF;
+            sb.append(B36.charAt(v / 36)).append(B36.charAt(v % 36));
+        }
+        return sb.toString();
+    }
+
+    /** 36 进制 → 字节；非法字符返回 null */
+    private static byte[] fromBase36(String s) {
+        if (s.length() % 2 != 0) return null;
+        byte[] out = new byte[s.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            int c1 = B36.indexOf(Character.toUpperCase(s.charAt(2 * i)));
+            int c2 = B36.indexOf(Character.toUpperCase(s.charAt(2 * i + 1)));
+            if (c1 < 0 || c2 < 0) return null;
+            out[i] = (byte) ((c1 * 36 + c2) & 0xFF);
+        }
+        return out;
+    }
+
+    /**
+     * 导出为密钥：SQ-XXXX-XXXX-XXXX-XXXX-<密文块>
+     * 前 4 组随机大写字母+数字；密文块为 AES 加密后的 36 进制编码（每 4 字符一组）。
+     * 剪贴板里不会出现任何明文个人信息。
+     */
+    public String encodeBackup() {
+        String json = exportAll();
+        if (json == null) return null;
+        byte[] enc = aesEncryptBytes(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        if (enc == null) return null;
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        java.util.Random rnd = new java.util.Random();
+        StringBuilder sb = new StringBuilder("SQ-");
+        for (int g = 0; g < 4; g++) {
+            if (g > 0) sb.append('-');
+            for (int i = 0; i < 4; i++) sb.append(alphabet.charAt(rnd.nextInt(alphabet.length())));
+        }
+        String data = toBase36(enc);
+        for (int i = 0; i < data.length(); i += 4) {
+            sb.append('-').append(data, i, Math.min(i + 4, data.length()));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 识别并恢复：SQ- 密钥（加密）或旧版明文 JSON。成功返回 true。
+     */
+    public boolean decodeBackup(String input) {
+        if (input == null) return false;
+        String s = input.trim();
+        String up = s.toUpperCase().replace("-", "");
+        if (up.startsWith("SQ") && up.length() > 18 + 2) {
+            // "SQ"(2) + 4 组随机头(16) = 18，之后全是密文数据块
+            String data = up.substring(18);
+            byte[] enc = fromBase36(data);
+            if (enc == null) return false;
+            byte[] plain = aesDecryptBytes(enc);
+            if (plain == null) return false;
+            return importAll(new String(plain, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        if (s.startsWith("{")) {
+            return importAll(s); // 兼容旧版明文备份
+        }
+        return false;
+    }
+
     /**
      * 应用服务器数据（权威源）：覆盖 寝室名/成员/起始日期/游标。
      * 签到记录与提醒设置属于本机状态，不随服务器覆盖。

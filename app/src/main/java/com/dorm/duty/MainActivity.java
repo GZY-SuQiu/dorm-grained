@@ -882,44 +882,44 @@ public class MainActivity extends Activity {
                 }));
         pageSettings.addView(g3);
 
-        // —— 数据备份 ——
-        pageSettings.addView(groupHeader("数据备份"));
+        // —— 数据备份（SQ 密钥，加密不外泄） ——
+        pageSettings.addView(groupHeader("数据备份 · SQ 密钥"));
         LinearLayout gData = card();
         gData.addView(settingRow("备", t.tabOffBg, t.textPrimary,
-                "备份数据", "复制全部数据到剪贴板，用于迁移新手机", "复制",
+                "备份数据（导出密钥）", "复制 SQ- 密钥到剪贴板，内容已加密，不含个人信息", "复制",
                 v -> {
-                    String json = store.exportAll();
-                    if (json == null) { ToastSafe.show(this, "备份失败"); return; }
+                    String key = store.encodeBackup();
+                    if (key == null) { ToastSafe.show(this, "备份失败"); return; }
                     ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("dorm-duty-backup", json));
-                    ToastSafe.show(this, "数据已复制到剪贴板，去粘贴保存吧");
+                    if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("dorm-duty-key", key));
+                    ToastSafe.show(this, "密钥已复制（" + key.length() + " 字符），换机后粘贴到「恢复数据」即可");
                 }));
         gData.addView(divider());
         gData.addView(settingRow("恢", t.tabOffBg, t.textPrimary,
-                "恢复数据", "从剪贴板粘贴旧手机备份覆盖当前数据", "恢复",
+                "恢复数据（识别密钥）", "粘贴 SQ- 密钥自动识别恢复，兼容旧版明文备份", "恢复",
                 v -> {
                     ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                     android.content.ClipData clip = (cm != null) ? cm.getPrimaryClip() : null;
                     if (clip == null || clip.getItemCount() == 0) {
                         new AlertDialog.Builder(this)
                                 .setTitle("恢复数据")
-                                .setMessage("剪贴板是空的。请先把旧手机复制的备份粘贴到剪贴板，再点此恢复。")
+                                .setMessage("剪贴板是空的。请先把旧手机复制的 SQ- 密钥粘贴到剪贴板，再点此恢复。")
                                 .setPositiveButton("知道了", null).show();
                         return;
                     }
                     new AlertDialog.Builder(this)
                             .setTitle("恢复数据")
-                            .setMessage("将用剪贴板中的数据覆盖当前成员与排班，确定继续？")
+                            .setMessage("将用剪贴板中的密钥/备份覆盖当前成员与排班，确定继续？")
                             .setPositiveButton("恢复", (d, w) -> {
-                                String json = clip.getItemAt(0).getText().toString();
-                                if (store.importAll(json)) {
+                                String text = clip.getItemAt(0).getText().toString();
+                                if (store.decodeBackup(text)) {
                                     t = ThemeManager.get(this);
                                     refreshTheme();
                                     renderAll();
                                     ReminderManager.scheduleDaily(this, store);
-                                    ToastSafe.show(this, "数据已恢复");
+                                    ToastSafe.show(this, "密钥已识别，数据恢复完成");
                                 } else {
-                                    ToastSafe.show(this, "恢复失败：内容不是有效备份");
+                                    ToastSafe.show(this, "识别失败：不是有效的 SQ- 密钥或备份");
                                 }
                             })
                             .setNegativeButton("取消", null)
