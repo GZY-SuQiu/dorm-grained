@@ -52,11 +52,79 @@ public class DataStore {
     }
 
     // ---------- 班级配置 ----------
+    /** 自动分组时每组人数（仅「自动分组」用；手动分组可不等） */
     public int groupSize() { return sp.getInt("cls_group_size", 4); }
     public void setGroupSize(int v) { sp.edit().putInt("cls_group_size", v).apply(); }
-    /** 轮班周期开关：true=按周循环（组绑定星期几，7天大周期）；false=顺序轮完 */
+    /** 轮班方式：true=按周循环（对齐周一，组对应星期几）；false=顺序轮完。仅「轮班开」时有意义 */
     public boolean weeklyCycle() { return sp.getBoolean("cls_cycle_weekly", true); }
     public void setWeeklyCycle(boolean v) { sp.edit().putBoolean("cls_cycle_weekly", v).apply(); }
+    /** 轮班开关：true=自动轮组；false=不轮班（固定默认组，可手动换） */
+    public boolean rotate() { return sp.getBoolean("cls_rotate", true); }
+    public void setRotate(boolean v) { sp.edit().putBoolean("cls_rotate", v).apply(); }
+    /** 不轮班时的固定组号（0-based） */
+    public int manualGroup() { return sp.getInt("cls_manual_group", 0); }
+    public void setManualGroup(int v) { sp.edit().putInt("cls_manual_group", v).apply(); }
+
+    // ---------- 班级显式分组（N+1 组，每组≥2人，组大小可不等） ----------
+    /** 显式分组：JSON 数组的数组（成员名字）；空=回退自动切组 */
+    public List<List<String>> rawGroups() {
+        List<List<String>> out = new ArrayList<>();
+        try {
+            JSONArray arr = new JSONArray(sp.getString("cls_groups", "[]"));
+            for (int i = 0; i < arr.length(); i++) {
+                JSONArray g = arr.getJSONArray(i);
+                List<String> names = new ArrayList<>();
+                for (int j = 0; j < g.length(); j++) names.add(g.getString(j));
+                out.add(names);
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+    public void saveRawGroups(List<List<String>> groups) {
+        try {
+            JSONArray arr = new JSONArray();
+            for (List<String> g : groups) {
+                JSONArray ga = new JSONArray();
+                for (String n : g) ga.put(n);
+                arr.put(ga);
+            }
+            sp.edit().putString("cls_groups", arr.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+    /** 是否已建显式分组（有则不再自动切） */
+    public boolean hasExplicitGroups() { return !rawGroups().isEmpty(); }
+    /** 把全班按 size 自动切成组并存为显式分组 */
+    public void autoGroupAll(int size) {
+        List<Member> m = members();
+        List<List<String>> out = new ArrayList<>();
+        for (int i = 0; i < m.size(); i += size) {
+            List<String> g = new ArrayList<>();
+            for (int j = i; j < Math.min(i + size, m.size()); j++) g.add(m.get(j).name);
+            if (!g.isEmpty()) out.add(g);
+        }
+        saveRawGroups(out);
+    }
+    /** 新增一组（第 N+1 组）；若还没有显式分组则先按当前组大小铺一遍再追加 */
+    public void addGroup() {
+        List<List<String>> g = rawGroups();
+        if (g.isEmpty()) autoGroupAll(groupSize());
+        g = rawGroups();
+        g.add(new ArrayList<>());
+        saveRawGroups(g);
+    }
+    /** 删除第 gi 组 */
+    public void deleteGroup(int gi) {
+        List<List<String>> g = rawGroups();
+        if (gi >= 0 && gi < g.size()) { g.remove(gi); saveRawGroups(g); }
+    }
+    /** 直接覆盖第 gi 组成员 */
+    public void setGroupMembers(int gi, List<String> names) {
+        List<List<String>> g = rawGroups();
+        if (gi >= 0 && gi < g.size()) {
+            g.set(gi, new ArrayList<>(names));
+            saveRawGroups(g);
+        }
+    }
 
     public LocalDate startDate() {
         long e = sp.getLong("start_epoch", LocalDate.now().toEpochDay());
@@ -274,6 +342,9 @@ public class DataStore {
             if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
             if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
             if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
+            if (o.has("cls_groups")) e.putString("cls_groups", o.getString("cls_groups"));
+            if (o.has("cls_rotate")) e.putBoolean("cls_rotate", o.getBoolean("cls_rotate"));
+            if (o.has("cls_manual_group")) e.putInt("cls_manual_group", o.getInt("cls_manual_group"));
             e.apply();
             return true;
         } catch (Exception e) {
@@ -294,6 +365,9 @@ public class DataStore {
             o.put("mode_class", sp.getBoolean("mode_class", false));
             o.put("cls_group_size", sp.getInt("cls_group_size", 4));
             o.put("cls_cycle_weekly", sp.getBoolean("cls_cycle_weekly", true));
+            o.put("cls_groups", sp.getString("cls_groups", "[]"));
+            o.put("cls_rotate", sp.getBoolean("cls_rotate", true));
+            o.put("cls_manual_group", sp.getInt("cls_manual_group", 0));
             o.put("privacy_accepted", sp.getBoolean("privacy_accepted", false));
             o.put("reminder_enabled", sp.getBoolean("reminder_enabled", false));
             o.put("reminder_hour", sp.getInt("reminder_hour", 7));
@@ -326,6 +400,9 @@ public class DataStore {
             if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
             if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
             if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
+            if (o.has("cls_groups")) e.putString("cls_groups", o.getString("cls_groups"));
+            if (o.has("cls_rotate")) e.putBoolean("cls_rotate", o.getBoolean("cls_rotate"));
+            if (o.has("cls_manual_group")) e.putInt("cls_manual_group", o.getInt("cls_manual_group"));
             if (o.has("privacy_accepted")) e.putBoolean("privacy_accepted", o.getBoolean("privacy_accepted"));
             if (o.has("reminder_enabled")) e.putBoolean("reminder_enabled", o.getBoolean("reminder_enabled"));
             if (o.has("reminder_hour")) e.putInt("reminder_hour", o.getInt("reminder_hour"));
@@ -385,34 +462,51 @@ public class DataStore {
     }
 
     // ---------- 班级分组（仅班级模式用） ----------
-    /** 按 groupSize 切分成员为组：[[组0成员],[组1成员],...]；末尾不满一组并入最后一组 */
+    /** 值日组列表：有显式分组(cls_groups)就按它来；否则回退按 groupSize 自动切。
+     *  返回每组成员（跳过空组）。 */
     public List<List<Member>> groupsOf() {
-        List<Member> m = members();
+        List<Member> all = members();
+        List<List<String>> raw = rawGroups();
+        if (!raw.isEmpty()) {
+            List<List<Member>> out = new ArrayList<>();
+            for (List<String> g : raw) {
+                List<Member> gm = new ArrayList<>();
+                for (String nm : g) {
+                    for (Member mm : all) if (mm.name.equals(nm)) { gm.add(mm); break; }
+                }
+                if (!gm.isEmpty()) out.add(gm);
+            }
+            return out;
+        }
+        // 回退：按 groupSize 自动切
         int gs = Math.max(1, groupSize());
         List<List<Member>> out = new ArrayList<>();
-        for (int i = 0; i < m.size(); i += gs) {
-            out.add(new ArrayList<>(m.subList(i, Math.min(i + gs, m.size()))));
+        for (int i = 0; i < all.size(); i += gs) {
+            out.add(new ArrayList<>(all.subList(i, Math.min(i + gs, all.size()))));
         }
         return out;
     }
 
     /** 某天值日组号（0-based）；无成员返回 -1。
-     *  周期开=按周循环：排班表对齐到「起始日所在周的周一」为锚点，
-     *        组↔星期几对齐、可预测（第 1 组总是周一…循环）。
-     *  周期关=顺序轮完：从原始起始日期逐天顺序轮完，不绑定星期几。
-     *  两种都用全部组、每天 1 组。 */
+     *  轮班关=不轮班：固定 manualGroup。
+     *  轮班开 + 按周：对齐到「起始日所在周的周一」，组对应星期几、可预测。
+     *  轮班开 + 顺序：从起始日逐天顺序轮完，不绑定星期几。 */
     public int groupIndexOf(LocalDate date) {
         List<List<Member>> gs = groupsOf();
         if (gs.isEmpty()) return -1;
         int gcount = gs.size();
+        if (!rotate()) {
+            int mg = manualGroup();
+            if (mg < 0 || mg >= gcount) mg = 0;
+            return mg;
+        }
         LocalDate anchor = startDate();
         if (weeklyCycle()) {
-            // 对齐到 anchor 所在周的周一（周一=0 … 周日=6）
             int dow = anchor.getDayOfWeek().getValue() - 1; // MONDAY→0
             anchor = anchor.minusDays(dow);
         }
         long days = date.toEpochDay() - anchor.toEpochDay();
-        if (days < 0) return -1;
+        if (days < 0) days = 0;
         int total = startIndex() + (int) days;
         return ((total % gcount) + gcount) % gcount;
     }

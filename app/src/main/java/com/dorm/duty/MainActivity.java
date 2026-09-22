@@ -328,9 +328,9 @@ public class MainActivity extends Activity {
     private void updateHintText() {
         int cnt = store.memberCount();
         if (store.isClassMode()) {
-            int gs = store.groupSize();
-            int groups = cnt == 0 ? 0 : (cnt + gs - 1) / gs;
-            hintView.setText(cnt + " 人 · " + groups + " 组 · 每天 1 组值日");
+            int groups = store.groupsOf().size();
+            String rot = store.rotate() ? "轮班中" : "不轮班";
+            hintView.setText(cnt + " 人 · " + groups + " 组 · 每天 1 组 · " + rot);
         } else {
             hintView.setText(cnt + " 人 · 每天 " + store.perDay() + " 人值日");
         }
@@ -507,9 +507,14 @@ public class MainActivity extends Activity {
 
         TextView rule = makeText(12, t.textSecondary);
         if (store.isClassMode()) {
-            String cyc = store.weeklyCycle() ? "按周循环（对齐周一 · 组对应星期几）" : "顺序轮完（从起始日逐天轮）";
-            rule.setText("轮换规则：全班分 " + store.groupsOf().size() + " 组（每组约 "
-                    + store.groupSize() + " 人），每天 1 组值日，" + cyc + "。");
+            int gcnt = store.groupsOf().size();
+            if (!store.rotate()) {
+                rule.setText("轮换规则：不轮班 · 固定第 " + (Math.min(store.manualGroup(), Math.max(0, gcnt - 1)) + 1)
+                        + " 组每天值日（可在设置改默认组，或手动换班）。");
+            } else {
+                String cyc = store.weeklyCycle() ? "按周循环（对齐周一 · 组对应星期几）" : "顺序轮完（从起始日逐天轮）";
+                rule.setText("轮换规则：全班分 " + gcnt + " 组，每天 1 组值日，" + cyc + "。");
+            }
         } else {
             rule.setText("轮换规则：从起始日期开始，按成员顺序每天 " + store.perDay()
                     + " 人值日，轮完一圈循环。");
@@ -659,7 +664,7 @@ public class MainActivity extends Activity {
         TextView cnt = makeText(12, t.textSecondary);
         int cap = store.memberLimit();
         String capText = store.isClassMode()
-                ? ("共 " + ms.size() + " 人 · 最多 " + cap + " · 全班分 " + (ms.size() == 0 ? 0 : (ms.size() + store.groupSize() - 1) / store.groupSize()) + " 组")
+                ? ("共 " + ms.size() + " 人 · 最多 " + cap + " · 全班分 " + store.groupsOf().size() + " 组")
                 : ("共 " + ms.size() + " 人 · 最多 " + cap + " · 每天 " + store.perDay() + " 人值日"
                    + (ms.size() < 4 ? "（至少 4 人）" : ""));
         pageMembers.addView(cnt);
@@ -745,7 +750,7 @@ public class MainActivity extends Activity {
             if (open) {
                 LinearLayout ex = card();
                 ex.addView(settingRow("改", t.tabOffBg, t.tabOffFg,
-                        "编辑资料", "姓名 · 床位", "编辑",
+                        "编辑资料", "姓名 · " + bedLabel(), "编辑",
                         v -> showEditDialog(idx, m)));
                 ex.addView(divider());
                 if (!m.leader) {
@@ -801,7 +806,7 @@ public class MainActivity extends Activity {
         et.setLayoutParams(elp);
         addCard.addView(et);
         final EditText etB = new EditText(this);
-        etB.setHint("床位（可空）");
+        etB.setHint(bedLabel() + "（可空）");
         etB.setTextSize(13);
         etB.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
         etB.setBackground(null);
@@ -832,6 +837,140 @@ public class MainActivity extends Activity {
         });
         addCard.addView(addBtn);
         pageMembers.addView(addCard);
+
+        if (store.isClassMode()) {
+            pageMembers.addView(groupCard());
+        }
+    }
+
+    /** 先把自动切组固化成显式分组（手动操作前调用） */
+    private void materializeGroups() {
+        if (!store.hasExplicitGroups()) store.autoGroupAll(store.groupSize());
+    }
+
+    /** 班级分组管理卡：自动分组 + N+1 组（每组≥2人、大小可不等） */
+    private View groupCard() {
+        materializeGroups(); // 固化成显式分组，后续编辑/删除索引对得上
+        LinearLayout c = card();
+        TextView h = makeText(13, t.textSecondary);
+        h.setText("班级分组 · 每天 1 组值日（每组至少 2 人）");
+        h.setTypeface(h.getTypeface(), Typeface.BOLD);
+        c.addView(h);
+
+        // 自动分组（组大小 + 生成）
+        LinearLayout autoRow = new LinearLayout(this);
+        autoRow.setOrientation(LinearLayout.HORIZONTAL);
+        autoRow.setGravity(Gravity.CENTER_VERTICAL);
+        autoRow.setPadding(0, dp(8), 0, 0);
+        TextView aL = makeText(12, t.textPrimary);
+        aL.setText("自动分组 · 每组");
+        aL.setPadding(0, 0, dp(6), 0);
+        autoRow.addView(aL);
+        int[] sizes = {2, 3, 4, 5, 6};
+        for (int s : sizes) {
+            final int sz = s;
+            TextView ch = makeText(12, s == store.groupSize() ? Color.WHITE : t.textPrimary);
+            ch.setTypeface(ch.getTypeface(), s == store.groupSize() ? Typeface.BOLD : Typeface.NORMAL);
+            ch.setText(sz + "");
+            ch.setGravity(Gravity.CENTER);
+            ch.setPadding(dp(8), dp(4), dp(8), dp(4));
+            GradientDrawable cbg = new GradientDrawable();
+            cbg.setColor(s == store.groupSize() ? t.main : t.tabOffBg);
+            cbg.setCornerRadius(dp(7) * 1f);
+            cbg.setStroke(dp(1), t.cardStroke);
+            ch.setBackground(cbg);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            clp.setMargins(0, 0, dp(5), 0);
+            ch.setLayoutParams(clp);
+            ch.setOnClickListener(v -> store.setGroupSize(sz));
+            autoRow.addView(ch);
+        }
+        View gen = solidButton("生成", t.main);
+        gen.setOnClickListener(v -> { store.autoGroupAll(store.groupSize()); renderAll(); ToastSafe.show(this, "已按每组 " + store.groupSize() + " 人生成分组"); });
+        autoRow.addView(gen);
+        c.addView(autoRow);
+
+        c.addView(divider());
+
+        // 组列表（按 raw 索引，直接可编辑/删除）
+        List<List<String>> raw = store.rawGroups();
+        for (int gi = 0; gi < raw.size(); gi++) {
+            final int gidx = gi;
+            List<String> names = raw.get(gi);
+            LinearLayout gr = new LinearLayout(this);
+            gr.setOrientation(LinearLayout.HORIZONTAL);
+            gr.setGravity(Gravity.CENTER_VERTICAL);
+            gr.setPadding(0, dp(6), 0, 0);
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView gt = makeText(13, t.textPrimary);
+            gt.setTypeface(gt.getTypeface(), Typeface.BOLD);
+            gt.setText("第 " + (gi + 1) + " 组 · " + names.size() + " 人");
+            if (names.size() < 2) gt.setTextColor(0xFFC62828);
+            info.addView(gt);
+            TextView gn = makeText(11, names.size() < 2 ? 0xFFC62828 : t.textSecondary);
+            gn.setText(names.isEmpty() ? "（空 · 点编辑加人）" : String.join("、", names));
+            info.addView(gn);
+            gr.addView(info);
+
+            TextView edit = makeText(12, t.main);
+            edit.setText("编辑");
+            edit.setPadding(dp(8), 0, dp(8), 0);
+            edit.setOnClickListener(v -> showGroupEdit(gidx));
+            gr.addView(edit);
+            TextView del = makeText(12, 0xFFC62828);
+            del.setText("删除");
+            del.setPadding(dp(8), 0, 0, 0);
+            del.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("删除第 " + (gi + 1) + " 组")
+                    .setMessage("该组 " + names.size() + " 人将被移出分组（仍留在名单）。确定删除？")
+                    .setPositiveButton("删除", (d, w) -> { store.deleteGroup(gidx); renderAll(); })
+                    .setNegativeButton("取消", null).show());
+            gr.addView(del);
+            c.addView(gr);
+        }
+
+        // 新增组
+        View addG = solidButton("＋ 新增一组（第 " + (raw.size() + 1) + " 组）", 0xFF00838F);
+        addG.setOnClickListener(v -> { store.addGroup(); renderAll(); ToastSafe.show(this, "已新增第 " + store.rawGroups().size() + " 组，点「编辑」加人"); });
+        LinearLayout.LayoutParams aglp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        aglp.setMargins(0, dp(6), 0, 0);
+        addG.setLayoutParams(aglp);
+        c.addView(addG);
+        return c;
+    }
+
+    /** 组编辑：多选成员弹窗 */
+    private void showGroupEdit(int gidx) {
+        List<List<String>> raw = store.rawGroups();
+        if (gidx < 0 || gidx >= raw.size()) {
+            ToastSafe.show(this, "请先「生成」分组再编辑");
+            return;
+        }
+        java.util.Set<String> in = new java.util.HashSet<>(raw.get(gidx));
+        List<DataStore.Member> all = store.members();
+        String[] labels = new String[all.size()];
+        boolean[] sel = new boolean[all.size()];
+        for (int i = 0; i < all.size(); i++) {
+            labels[i] = DataStore.displayText(all.get(i));
+            sel[i] = in.contains(all.get(i).name);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("第 " + (gidx + 1) + " 组 · 选成员")
+                .setMultiChoiceItems(labels, sel, (d, which, checked) -> sel[which] = checked)
+                .setPositiveButton("保存", (d, w) -> {
+                    List<String> names = new ArrayList<>();
+                    for (int i = 0; i < all.size(); i++) if (sel[i]) names.add(all.get(i).name);
+                    store.setGroupMembers(gidx, names);
+                    renderAll();
+                    if (names.size() < 2) ToastSafe.show(this, "第 " + (gidx + 1) + " 组不足 2 人，请补人");
+                })
+                .setNegativeButton("取消", null)
+                .show();
     }
 
     /** 编辑成员：姓名 + 床位 */
@@ -844,7 +983,7 @@ public class MainActivity extends Activity {
         etN.setHintTextColor(t.textSecondary);
         final EditText etB = new EditText(this);
         etB.setText(m.bed == null ? "" : m.bed);
-        etB.setHint("床位（可空）");
+        etB.setHint(bedLabel() + "（可空）");
         etB.setFilters(new InputFilter[]{new InputFilter.LengthFilter(12)});
         etB.setTextColor(t.textPrimary);
         etB.setHintTextColor(t.textSecondary);
@@ -1125,47 +1264,74 @@ public class MainActivity extends Activity {
                 }));
         if (store.isClassMode()) {
             g2.addView(divider());
-            // 组大小
-            int[] sizes = {3, 4, 5, 6};
-            LinearLayout gsz = new LinearLayout(this);
-            gsz.setOrientation(LinearLayout.HORIZONTAL);
-            gsz.setGravity(Gravity.CENTER_VERTICAL);
-            gsz.setPadding(0, dp(2), 0, 0);
-            TextView gszL = makeText(13, t.textPrimary);
-            gszL.setText("每组人数");
-            gszL.setPadding(0, 0, dp(8), 0);
-            gsz.addView(gszL);
-            for (int s : sizes) {
-                final int sz = s;
-                TextView b = makeText(12, s == store.groupSize() ? Color.WHITE : t.textPrimary);
-                b.setTypeface(b.getTypeface(), s == store.groupSize() ? Typeface.BOLD : Typeface.NORMAL);
-                b.setText(sz + "");
-                b.setGravity(Gravity.CENTER);
-                b.setPadding(dp(10), dp(5), dp(10), dp(5));
-                GradientDrawable bbg = new GradientDrawable();
-                bbg.setColor(s == store.groupSize() ? t.main : t.tabOffBg);
-                bbg.setCornerRadius(dp(8) * 1f);
-                bbg.setStroke(dp(1), t.cardStroke);
-                b.setBackground(bbg);
-                LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                blp.setMargins(0, 0, dp(6), 0);
-                b.setLayoutParams(blp);
-                b.setOnClickListener(v2 -> { store.setGroupSize(sz); renderAll(); });
-                gsz.addView(b);
-            }
-            g2.addView(gsz);
-            g2.addView(divider());
-            // 轮班周期开关
-            boolean cyc = store.weeklyCycle();
-            g2.addView(settingRow("周", cyc ? 0xFFE8F5E9 : t.tabOffBg, cyc ? t.mainDark : t.tabOffFg,
-                    "轮班周期", cyc ? "按周循环 · 对齐周一（组对应星期几）" : "顺序轮完 · 从起始日逐天轮",
-                    cyc ? "开" : "关",
+            // 轮班 开关（开=自动轮流；关=不轮班，固定默认组）
+            boolean rot = store.rotate();
+            g2.addView(settingRow("轮", rot ? 0xFFE8F5E9 : 0xFFFFF3E0, rot ? t.mainDark : 0xFFE65100,
+                    "轮班", rot ? "开 · 各组自动轮流值日" : "关 · 不轮班（固定一组）",
+                    rot ? "开" : "关",
                     v -> {
-                        store.setWeeklyCycle(!cyc);
+                        store.setRotate(!rot);
                         renderAll();
-                        ToastSafe.show(this, !cyc ? "轮班周期已开（按周循环）" : "轮班周期已关（顺序轮完）");
+                        ToastSafe.show(this, !rot ? "已关轮班：不轮班，固定默认组" : "已开轮班：各组轮流");
                     }));
+            if (rot) {
+                g2.addView(divider());
+                // 轮班方式（按周 / 顺序）
+                boolean cyc = store.weeklyCycle();
+                g2.addView(settingRow("周", cyc ? 0xFFE8F5E9 : t.tabOffBg, cyc ? t.mainDark : t.tabOffFg,
+                        "轮班方式", cyc ? "按周循环 · 对齐周一（组对应星期几）" : "顺序轮完 · 从起始日逐天轮",
+                        cyc ? "按周" : "顺序",
+                        v -> { store.setWeeklyCycle(!cyc); renderAll(); }));
+                g2.addView(divider());
+                // 自动分组 · 每组人数
+                int[] sizes = {2, 3, 4, 5, 6};
+                LinearLayout gsz = new LinearLayout(this);
+                gsz.setOrientation(LinearLayout.HORIZONTAL);
+                gsz.setGravity(Gravity.CENTER_VERTICAL);
+                gsz.setPadding(0, dp(2), 0, 0);
+                TextView gszL = makeText(13, t.textPrimary);
+                gszL.setText("自动分组 · 每组");
+                gszL.setPadding(0, 0, dp(8), 0);
+                gsz.addView(gszL);
+                for (int s : sizes) {
+                    final int sz = s;
+                    TextView b = makeText(12, s == store.groupSize() ? Color.WHITE : t.textPrimary);
+                    b.setTypeface(b.getTypeface(), s == store.groupSize() ? Typeface.BOLD : Typeface.NORMAL);
+                    b.setText(sz + "");
+                    b.setGravity(Gravity.CENTER);
+                    b.setPadding(dp(10), dp(5), dp(10), dp(5));
+                    GradientDrawable bbg = new GradientDrawable();
+                    bbg.setColor(s == store.groupSize() ? t.main : t.tabOffBg);
+                    bbg.setCornerRadius(dp(8) * 1f);
+                    bbg.setStroke(dp(1), t.cardStroke);
+                    b.setBackground(bbg);
+                    LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                    blp.setMargins(0, 0, dp(6), 0);
+                    b.setLayoutParams(blp);
+                    b.setOnClickListener(v2 -> { store.setGroupSize(sz); renderAll(); });
+                    gsz.addView(b);
+                }
+                g2.addView(gsz);
+            } else {
+                g2.addView(divider());
+                // 默认值日组（不轮班时固定）
+                int mg = store.manualGroup();
+                int gcnt = store.groupsOf().size();
+                String mLabel = gcnt == 0 ? "（无组）" : "第 " + (Math.min(mg, gcnt - 1) + 1) + " 组";
+                g2.addView(settingRow("默", 0xFFE3F2FD, 0xFF1976D2,
+                        "默认值日组", "不轮班时每天固定该组值日", mLabel,
+                        v -> {
+                            if (gcnt == 0) { ToastSafe.show(this, "请先在成员页生成分组"); return; }
+                            List<String> opts = new ArrayList<>();
+                            for (int i = 0; i < gcnt; i++) opts.add("第 " + (i + 1) + " 组");
+                            new AlertDialog.Builder(this)
+                                    .setTitle("选择默认值日组")
+                                    .setItems(opts.toArray(new String[0]),
+                                            (d, w) -> { store.setManualGroup(w); renderAll(); })
+                                    .show();
+                        }));
+            }
         }
         if (groupOpen[4]) pageSettings.addView(g2);
 
@@ -1716,6 +1882,11 @@ public class MainActivity extends Activity {
         for (CalendarSync.CalInfo ci : calSync.listWritable())
             if (ci.id == sel) return ci.name;
         return "已指定 #" + sel + "（可能已失效，将自动回退）";
+    }
+
+    /** 床位字段标签（随模式）：寝室=床位，班级=学号/座位 */
+    private String bedLabel() {
+        return store.isClassMode() ? "学号/座位" : "床位";
     }
 
     /** 自动目标日历的展示文案（随模式） */
