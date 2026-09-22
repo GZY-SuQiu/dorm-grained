@@ -925,7 +925,7 @@ public class MainActivity extends Activity {
             del.setText("删除");
             del.setPadding(dp(8), 0, 0, 0);
             del.setOnClickListener(v -> new AlertDialog.Builder(this)
-                    .setTitle("删除第 " + (gi + 1) + " 组")
+                    .setTitle("删除第 " + (gidx + 1) + " 组")
                     .setMessage("该组 " + names.size() + " 人将被移出分组（仍留在名单）。确定删除？")
                     .setPositiveButton("删除", (d, w) -> { store.deleteGroup(gidx); renderAll(); })
                     .setNegativeButton("取消", null).show());
