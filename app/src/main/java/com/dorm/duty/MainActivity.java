@@ -321,7 +321,7 @@ public class MainActivity extends Activity {
     /** 顶栏标题：随模式切换 */
     private void updateTitleText() {
         titleMain.setText((store.isClassMode() ? "🏫 班级值日 · " : "🏠 寝室值日 · ")
-                + store.roomName());
+                + store.displayName());
     }
 
     /** 顶栏副标题：人数与值班说明 */
@@ -688,16 +688,17 @@ public class MainActivity extends Activity {
             rlp.setMargins(0, 0, 0, dp(8));
             row.setLayoutParams(rlp);
 
-            // 头像圆
+            // 头像圆（寝室长高亮仅寝室模式；班级值日无组长）
+            boolean leaderHi = m.leader && !store.isClassMode();
             TextView avatar = new TextView(this);
             avatar.setText(String.valueOf(m.name.isEmpty() ? '·' : m.name.charAt(0)));
             avatar.setTextSize(15);
             avatar.setTypeface(avatar.getTypeface(), Typeface.BOLD);
             avatar.setGravity(Gravity.CENTER);
-            avatar.setTextColor(m.leader ? Color.WHITE : t.tabOffFg);
+            avatar.setTextColor(leaderHi ? Color.WHITE : t.tabOffFg);
             GradientDrawable ab = new GradientDrawable();
             ab.setShape(GradientDrawable.OVAL);
-            ab.setColor(m.leader ? t.main : t.tabOffBg);
+            ab.setColor(leaderHi ? t.main : t.tabOffBg);
             avatar.setBackground(ab);
             int as = dp(40);
             LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(as, as);
@@ -716,8 +717,8 @@ public class MainActivity extends Activity {
                 bd.setText(m.bed);
                 info.addView(bd);
             }
-            TextView st = makeText(11, m.leader ? t.main : t.textSecondary);
-            st.setText(m.leader ? "寝室长" : "成员");
+            TextView st = makeText(11, leaderHi ? t.main : t.textSecondary);
+            st.setText(leaderHi ? "寝室长" : "成员");
             info.addView(st);
             info.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -753,7 +754,7 @@ public class MainActivity extends Activity {
                         "编辑资料", "姓名 · " + bedLabel(), "编辑",
                         v -> showEditDialog(idx, m)));
                 ex.addView(divider());
-                if (!m.leader) {
+                if (!m.leader && !store.isClassMode()) {
                     ex.addView(settingRow("长", 0xFFE3F2FD, 0xFF1976D2,
                             "设为寝室长", "一个寝室只有一位寝室长", "设置",
                             v -> {
@@ -1124,10 +1125,10 @@ public class MainActivity extends Activity {
         LinearLayout g1 = card();
         boolean clsMode = store.isClassMode();
         g1.addView(settingRow(clsMode ? "班" : "寝", t.tabOffBg, t.textPrimary,
-                clsMode ? "班级名称" : "寝室名称", "用于顶栏与日历事件显示", store.roomName(),
+                clsMode ? "班级名称" : "寝室名称", "用于顶栏与日历事件显示", store.displayName(),
                 v -> {
                     final EditText et = new EditText(this);
-                    et.setText(store.roomName());
+                    et.setText(store.displayName());
                     et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16)});
                     new AlertDialog.Builder(this)
                             .setTitle(clsMode ? "班级名称" : "寝室名称")
@@ -1135,7 +1136,7 @@ public class MainActivity extends Activity {
                             .setPositiveButton("保存", (d, w) -> {
                                 String n = et.getText().toString().trim();
                                 if (!n.isEmpty()) {
-                                    store.setRoomName(n);
+                                    store.setDisplayName(n);
                                     renderAll();
                                 }
                             })

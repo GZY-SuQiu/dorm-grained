@@ -29,7 +29,7 @@ public class AlarmReceiver extends BroadcastReceiver {
         }
 
         String title = "今日值日：" + shown;
-        String body = place + "：" + store.roomName() + " · 别忘了值日哦";
+        String body = place + "：" + store.displayName() + " · 别忘了值日哦";
 
         ReminderManager.ensureChannel(c);
         Intent open = new Intent(c, MainActivity.class);
@@ -43,7 +43,7 @@ public class AlarmReceiver extends BroadcastReceiver {
                     .setContentTitle(title)
                     .setContentText(body)
                     .setStyle(new Notification.BigTextStyle().bigText(
-                            place + "：" + store.roomName() + "\n今日值日：" + shown))
+                            place + "：" + store.displayName() + "\n今日值日：" + shown))
                     .setAutoCancel(true)
                     .setContentIntent(content)
                     .setWhen(System.currentTimeMillis());

@@ -41,6 +41,12 @@ public class DataStore {
 
     public String roomName() { return sp.getString("room_name", "我的寝室"); }
     public void setRoomName(String v) { sp.edit().putString("room_name", v).apply(); }
+    /** 班级名称（班级模式独立于寝室名） */
+    public String clsName() { return sp.getString("cls_name", "我的班级"); }
+    public void setClsName(String v) { sp.edit().putString("cls_name", v).apply(); }
+    /** 当前模式的显示名：寝室=寝室名，班级=班级名 */
+    public String displayName() { return isClassMode() ? clsName() : roomName(); }
+    public void setDisplayName(String v) { if (isClassMode()) setClsName(v); else setRoomName(v); }
 
     public int size() { return sp.getInt("room_size", 6); }
     public void setSize(int v) { sp.edit().putInt("room_size", v).apply(); }
@@ -336,6 +342,7 @@ public class DataStore {
             JSONObject o = new JSONObject(json);
             SharedPreferences.Editor e = sp.edit();
             if (o.has("room_name")) e.putString("room_name", o.getString("room_name"));
+            if (o.has("cls_name")) e.putString("cls_name", o.getString("cls_name"));
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
             if (o.has("members")) e.putString("members", o.getString("members"));
@@ -359,6 +366,7 @@ public class DataStore {
             JSONObject o = new JSONObject();
             o.put("v", 2);
             o.put("room_name", sp.getString("room_name", "我的寝室"));
+            o.put("cls_name", sp.getString("cls_name", "我的班级"));
             o.put("start_epoch", sp.getLong("start_epoch", LocalDate.now().toEpochDay()));
             o.put("start_index", sp.getInt("start_index", 0));
             o.put("members", sp.getString("members", "[]"));
@@ -394,6 +402,7 @@ public class DataStore {
             JSONObject o = new JSONObject(json);
             SharedPreferences.Editor e = sp.edit();
             if (o.has("room_name")) e.putString("room_name", o.getString("room_name"));
+            if (o.has("cls_name")) e.putString("cls_name", o.getString("cls_name"));
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
             if (o.has("members")) e.putString("members", o.getString("members"));
