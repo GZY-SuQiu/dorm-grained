@@ -134,6 +134,13 @@ public class DataStore {
     public int selectedCalendarId() { return sp.getInt("cal_id", 0); }
     public void setSelectedCalendarId(int v) { sp.edit().putInt("cal_id", v).apply(); }
 
+    // ---------- 自定义背景 ----------
+    /** 0=主题默认 1=纯色 2=图片 */
+    public int bgMode() { return sp.getInt("bg_mode", 0); }
+    public void setBgMode(int v) { sp.edit().putInt("bg_mode", v).apply(); }
+    public int bgColor() { return sp.getInt("bg_color", 0); }
+    public void setBgColor(int v) { sp.edit().putInt("bg_color", v).apply(); }
+
     // ---------- 联网同步（服务器权威源） ----------
     public String serverUrl() { return sp.getString("server_url", ""); }
     public void setServerUrl(String v) { sp.edit().putString("server_url", v == null ? "" : v.trim()).apply(); }
@@ -270,9 +277,12 @@ public class DataStore {
             o.put("theme_index", sp.getInt("theme_index", 0));
             o.put("cal_id", sp.getInt("cal_id", 0));
             o.put("server_url", sp.getString("server_url", ""));
+            o.put("bg_mode", sp.getInt("bg_mode", 0));
+            o.put("bg_color", sp.getInt("bg_color", 0));
             JSONObject checks = new JSONObject();
             for (String k : sp.getAll().keySet())
-                if (k.startsWith("check_")) checks.put(k, sp.getAll().get(k));
+                if (k.startsWith("check_") || k.startsWith("ovr_") || k.startsWith("lv_"))
+                    checks.put(k, sp.getAll().get(k));
             o.put("checks", checks);
             return o.toString();
         } catch (Exception e) {
@@ -295,6 +305,8 @@ public class DataStore {
             if (o.has("reminder_minute")) e.putInt("reminder_minute", o.getInt("reminder_minute"));
             if (o.has("theme_index")) e.putInt("theme_index", o.getInt("theme_index"));
             if (o.has("cal_id")) e.putInt("cal_id", o.getInt("cal_id"));
+            if (o.has("bg_mode")) e.putInt("bg_mode", o.getInt("bg_mode"));
+            if (o.has("bg_color")) e.putInt("bg_color", o.getInt("bg_color"));
             if (o.has("checks")) {
                 JSONObject c = o.getJSONObject("checks");
                 java.util.Iterator<String> it = c.keys();
@@ -350,13 +362,113 @@ public class DataStore {
         List<Member> m = members();
         List<String> out = new ArrayList<>();
         if (m.isEmpty()) return out;
+        String ds = date.toString();
+        // 1) 换班/休息覆盖优先
+        List<String> ovr = getOverride(ds);
+        if (ovr != null) return ovr; // 空列表 = 当天全员休息
+        // 2) 基础轮转 + 请假自动补位
         long days = date.toEpochDay() - startDate().toEpochDay();
         if (days < 0) return out;
         int base = startIndex() + (int)(days * perDay());
         int n = m.size();
-        for (int i = 0; i < perDay(); i++) {
-            out.add(m.get(((base + i) % n + n) % n).name);
+        List<String> leaves = getLeaves(ds);
+        int need = perDay();
+        int guard = 0;
+        int cursor = base;
+        while (out.size() < need && guard <= n) {
+            Member cand = m.get(((cursor % n) + n) % n);
+            cursor++;
+            guard++;
+            if (leaves.contains(cand.name)) continue; // 请假/休息 → 下位顶上
+            out.add(cand.name);
         }
         return out;
+    }
+
+    // ---------- 换班 / 休息（按日覆盖） ----------
+    /** 取某天的排班覆盖；null = 无覆盖 */
+    public List<String> getOverride(String dateStr) {
+        String raw = sp.getString("ovr_" + dateStr, null);
+        if (raw == null) return null;
+        try {
+            JSONArray arr = new JSONArray(raw);
+            List<String> out = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) out.add(arr.getString(i));
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public void setOverride(String dateStr, List<String> names) {
+        if (names == null) {
+            sp.edit().remove("ovr_" + dateStr).apply();
+            return;
+        }
+        try {
+            JSONArray arr = new JSONArray();
+            for (String n : names) arr.put(n);
+            sp.edit().putString("ovr_" + dateStr, arr.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    public void clearOverrides() {
+        SharedPreferences.Editor e = sp.edit();
+        for (String k : sp.getAll().keySet())
+            if (k.startsWith("ovr_")) e.remove(k);
+        e.apply();
+    }
+
+    // ---------- 请假 / 休息（按日 + 成员） ----------
+    public List<String> getLeaves(String dateStr) {
+        try {
+            JSONArray arr = new JSONArray(sp.getString("lv_" + dateStr, "[]"));
+            List<String> out = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) out.add(arr.getString(i));
+            return out;
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    public void setLeave(String dateStr, String name, boolean on) {
+        List<String> lv = getLeaves(dateStr);
+        if (on) {
+            if (!lv.contains(name)) lv.add(name);
+        } else {
+            lv.remove(name);
+        }
+        try {
+            JSONArray arr = new JSONArray();
+            for (String n : lv) arr.put(n);
+            if (lv.isEmpty()) sp.edit().remove("lv_" + dateStr).apply();
+            else sp.edit().putString("lv_" + dateStr, arr.toString()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    public void clearLeaves() {
+        SharedPreferences.Editor e = sp.edit();
+        for (String k : sp.getAll().keySet())
+            if (k.startsWith("lv_")) e.remove(k);
+        e.apply();
+    }
+
+    // ---------- 统计 ----------
+    /** 某成员近 days 天（含今天）实际值日天数 */
+    public int dutyCountRecent(String name, int days) {
+        int c = 0;
+        for (int i = 0; i < days; i++) {
+            if (dutyOf(LocalDate.now().minusDays(i)).contains(name)) c++;
+        }
+        return c;
+    }
+
+    /** 某成员近 days 天请假天数 */
+    public int leaveCountRecent(String name, int days) {
+        int c = 0;
+        for (int i = 0; i < days; i++) {
+            if (getLeaves(LocalDate.now().minusDays(i).toString()).contains(name)) c++;
+        }
+        return c;
     }
 }

@@ -40,6 +40,7 @@ public class MainActivity extends Activity {
     private TextView titleMain, hintView;
     private final TextView[] tabIcons = new TextView[5];
     private final TextView[] tabLabels = new TextView[5];
+    private final View[] tabDots = new View[5];
     private int currentTab;
     private int expandedIdx = -1; // 成员页当前展开 ⚙ 面板的成员序号
     private final boolean[] groupOpen = new boolean[9]; // 设置页 9 个组默认全展开
@@ -161,7 +162,7 @@ public class MainActivity extends Activity {
 
     /** 切换主题后重刷全局配色（背景、状态栏、底部菜单、顶栏标题） */
     private void refreshTheme() {
-        root.setBackgroundColor(t.windowBg);
+        applyBackground();
         getWindow().setStatusBarColor(t.main);
         if (tabWrap != null) {
             tabWrap.setBackgroundColor(t.cardBg);
@@ -173,6 +174,62 @@ public class MainActivity extends Activity {
             titleMain.setTextColor(t.mainDark);
             hintView.setTextColor(t.textSecondary);
             selectTab(currentTab);
+        }
+    }
+
+    /** 页面背景：0=主题色 1=纯色 2=图片 */
+    private void applyBackground() {
+        int m = store.bgMode();
+        if (m == 1) {
+            root.setBackgroundColor(store.bgColor());
+            return;
+        }
+        if (m == 2) {
+            android.graphics.BitmapDrawable d = loadBgImage();
+            if (d != null) {
+                root.setBackground(d);
+                return;
+            }
+        }
+        root.setBackgroundColor(t.windowBg);
+    }
+
+    private android.graphics.BitmapDrawable loadBgImage() {
+        try {
+            java.io.File f = new java.io.File(getExternalFilesDir(null), "bg.jpg");
+            if (!f.exists()) return null;
+            android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
+            return b == null ? null : new android.graphics.BitmapDrawable(getResources(), b, null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 相册选图 → 压缩 1080 宽 → 存 bg.jpg 并设为页面背景 */
+    @Override
+    protected void onActivityResult(int req, int res, android.content.Intent data) {
+        if (req == 201 && res == RESULT_OK && data != null && data.getData() != null) {
+            try {
+                android.graphics.Bitmap src = android.graphics.BitmapFactory
+                        .decodeStream(getContentResolver().openInputStream(data.getData()));
+                if (src == null) {
+                    ToastSafe.show(this, "图片读取失败");
+                    return;
+                }
+                int w = 1080;
+                int h = Math.max(1, Math.round(1080f * src.getHeight() / src.getWidth()));
+                android.graphics.Bitmap scaled = android.graphics.Bitmap.createScaledBitmap(src, w, h, true);
+                java.io.File f = new java.io.File(getExternalFilesDir(null), "bg.jpg");
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(f)) {
+                    scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, fos);
+                }
+                if (src != scaled) src.recycle();
+                store.setBgMode(2);
+                applyBackground();
+                ToastSafe.show(this, "背景图片已设置");
+            } catch (Exception e) {
+                ToastSafe.show(this, "图片处理失败，请换一张试试");
+            }
         }
     }
 
@@ -287,6 +344,19 @@ public class MainActivity extends Activity {
             tabLabels[i].setPadding(0, dp(4), 0, 0);
             tab.addView(tabLabels[i]);
 
+            // 选中指示条
+            int dw = dp(22);
+            tabDots[i] = new View(this);
+            GradientDrawable gd = new GradientDrawable();
+            gd.setColor(t.main);
+            gd.setCornerRadius(dp(2) * 1f);
+            tabDots[i].setBackground(gd);
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dw, dp(3));
+            dlp.setMargins(0, dp(3), 0, 0);
+            tabDots[i].setLayoutParams(dlp);
+            tabDots[i].setVisibility(View.GONE);
+            tab.addView(tabDots[i]);
+
             tab.setOnClickListener(v -> selectTab(ti));
             tabInner.addView(tab);
         }
@@ -307,6 +377,7 @@ public class MainActivity extends Activity {
             tabIcons[k].setTextColor(on ? Color.WHITE : t.tabOffFg);
             tabLabels[k].setTextColor(on ? t.mainDark : t.textSecondary);
             tabLabels[k].setTypeface(tabLabels[k].getTypeface(), on ? Typeface.BOLD : Typeface.NORMAL);
+            if (tabDots[k] != null) tabDots[k].setVisibility(on ? View.VISIBLE : View.GONE);
         }
     }
 
@@ -417,12 +488,29 @@ public class MainActivity extends Activity {
             rlp.setMargins(0, 0, 0, dp(8));
             row.setLayoutParams(rlp);
 
+            // 日期列（含"换班/请假"小标记）
+            LinearLayout dateBox = new LinearLayout(this);
+            dateBox.setOrientation(LinearLayout.VERTICAL);
+            dateBox.setLayoutParams(new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f));
             TextView date = makeText(14, i == 0 ? t.mainDark : t.textSecondary);
             date.setTypeface(date.getTypeface(), i == 0 ? Typeface.BOLD : Typeface.NORMAL);
             date.setText((i == 0 ? "今天 · " : "") + d.format(D_FMT));
-            date.setLayoutParams(new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1.2f));
-            row.addView(date);
+            dateBox.addView(date);
+            boolean hasOvr = store.getOverride(d.toString()) != null;
+            java.util.List<String> lv = store.getLeaves(d.toString());
+            if (hasOvr || !lv.isEmpty()) {
+                TextView mark = makeText(11, hasOvr ? 0xFFE65100 : t.textSecondary);
+                StringBuilder mb = new StringBuilder();
+                if (hasOvr) mb.append("换班");
+                if (!lv.isEmpty()) {
+                    if (mb.length() > 0) mb.append(" · ");
+                    mb.append(String.join("、", lv) + " 请假");
+                }
+                mark.setText(mb.toString());
+                dateBox.addView(mark);
+            }
+            row.addView(dateBox);
 
             TextView duty = makeText(14, t.textPrimary);
             duty.setTypeface(duty.getTypeface(), Typeface.BOLD);
@@ -439,6 +527,25 @@ public class MainActivity extends Activity {
             }
             pagePlan.addView(row);
         }
+        // 换班 / 请假 入口
+        LinearLayout acts = new LinearLayout(this);
+        acts.setOrientation(LinearLayout.HORIZONTAL);
+        acts.setGravity(Gravity.CENTER_VERTICAL);
+        View swap = solidButton("🔁 换班", t.main);
+        swap.setOnClickListener(v -> swapFlow());
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        slp.setMargins(0, 0, dp(8), 0);
+        swap.setLayoutParams(slp);
+        acts.addView(swap);
+        View leave = solidButton("📴 请假 / 休息", 0xFF00838F);
+        leave.setOnClickListener(v -> leaveFlow());
+        LinearLayout.LayoutParams llp2 = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+        leave.setLayoutParams(llp2);
+        acts.addView(leave);
+        pagePlan.addView(acts);
+
         // 过去 7 天值班历史
         LinearLayout hist = card();
         TextView hh = makeText(13, t.textSecondary);
@@ -586,6 +693,15 @@ public class MainActivity extends Activity {
                             }));
                     ex.addView(divider());
                 }
+                ex.addView(settingRow("假", 0xFFE0F2F1, 0xFF00695C,
+                        "请假 / 休息", "选日子标记，值日自动由下位顶上；再点取消", "标记",
+                        v -> leaveFlowFor(m)));
+                ex.addView(divider());
+                ex.addView(settingRow("统", t.tabOffBg, t.tabOffFg,
+                        "值日统计", "近 14 天",
+                        "值日 " + store.dutyCountRecent(m.name, 14) + " · 请假 " + store.leaveCountRecent(m.name, 14),
+                        null));
+                ex.addView(divider());
                 ex.addView(settingRow("删", 0xFFFFEBEE, 0xFFC62828,
                         "删除成员", "将移出值日名单", "删除",
                         v -> new AlertDialog.Builder(this)
@@ -698,6 +814,81 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    /** 换班流程：选日子 → 选当天值日的人 → 选换成谁 */
+    private void swapFlow() {
+        if (store.members().isEmpty()) {
+            ToastSafe.show(this, "请先添加成员");
+            return;
+        }
+        DatePickDialog.show(this, LocalDate.now(), t, d0 -> {
+            List<String> cur = store.dutyOf(d0);
+            if (cur.isEmpty()) {
+                ToastSafe.show(this, "这天没有值日，无需换班");
+                return;
+            }
+            String[] opts = cur.toArray(new String[0]);
+            new AlertDialog.Builder(this)
+                    .setTitle(d0.format(D_FMT) + " · 选要换下的人")
+                    .setMessage("当天值日：" + String.join("、", cur))
+                    .setSingleChoiceItems(opts, 0, (dd, wi) -> {
+                        final String outP = opts[wi];
+                        List<DataStore.Member> ms = store.members();
+                        String[] mp = new String[ms.size()];
+                        for (int i = 0; i < ms.size(); i++) mp[i] = DataStore.displayText(ms.get(i));
+                        new AlertDialog.Builder(this)
+                                .setTitle("换成谁？")
+                                .setItems(mp, (dd2, wi2) -> {
+                                    String inP = ms.get(wi2).name;
+                                    if (inP.equals(outP)) {
+                                        ToastSafe.show(this, "请选不同的人");
+                                        return;
+                                    }
+                                    List<String> L = new ArrayList<>(cur);
+                                    if (L.contains(inP)) {
+                                        int i1 = L.indexOf(outP), i2 = L.indexOf(inP);
+                                        String tmp = L.get(i1);
+                                        L.set(i1, L.get(i2));
+                                        L.set(i2, tmp);
+                                    } else {
+                                        L.set(L.indexOf(outP), inP);
+                                    }
+                                    store.setOverride(d0.toString(), L);
+                                    renderAll();
+                                    ToastSafe.show(this, "已换班：" + outP + " ↔ " + inP);
+                                })
+                                .show();
+                    })
+                    .show();
+        });
+    }
+
+    /** 请假/休息流程（排班页入口：先选成员再选日子） */
+    private void leaveFlow() {
+        List<DataStore.Member> ms = store.members();
+        if (ms.isEmpty()) {
+            ToastSafe.show(this, "请先添加成员");
+            return;
+        }
+        String[] mp = new String[ms.size()];
+        for (int i = 0; i < ms.size(); i++) mp[i] = DataStore.displayText(ms.get(i));
+        new AlertDialog.Builder(this)
+                .setTitle("请假 / 休息 · 选成员")
+                .setItems(mp, (dd, wi) -> leaveFlowFor(ms.get(wi)))
+                .show();
+    }
+
+    /** 请假/休息：给指定成员选日子，标记或取消（幂等） */
+    private void leaveFlowFor(DataStore.Member m) {
+        DatePickDialog.show(this, LocalDate.now(), t, d0 -> {
+            boolean wasOn = store.getLeaves(d0.toString()).contains(m.name);
+            store.setLeave(d0.toString(), m.name, !wasOn);
+            renderAll();
+            if (wasOn) ToastSafe.show(this, "已取消 " + m.name + " " + d0.format(D_FMT) + " 的请假");
+            else ToastSafe.show(this, m.name + " " + d0.format(D_FMT) + " 请假，值日由下位顶上");
+            expandedIdx = -1;
+        });
+    }
+
     // ============================ 页4：设置 ============================
 
     private void renderSettings() {
@@ -778,6 +969,10 @@ public class MainActivity extends Activity {
             g6.addView(row);
             if (i > 0) g6.addView(divider());
         }
+        g6.addView(divider());
+        g6.addView(settingRow("背", t.tabOffBg, t.tabOffFg,
+                "自定义背景", currentBgDesc(), "设置",
+                v -> showBgDialog()));
         if (groupOpen[1]) pageSettings.addView(g6);
 
         // —— 值日提醒 ——
@@ -825,6 +1020,22 @@ public class MainActivity extends Activity {
                     store.setStartIndex(0);
                     renderAll();
                     ToastSafe.show(this, "轮换已重置");
+                }));
+        g2.addView(divider());
+        g2.addView(settingRow("换", t.tabOffBg, t.tabOffFg,
+                "清除换班记录", "把换班覆盖的日期恢复成自动轮换", "清除",
+                v -> {
+                    store.clearOverrides();
+                    renderAll();
+                    ToastSafe.show(this, "换班记录已清除");
+                }));
+        g2.addView(divider());
+        g2.addView(settingRow("假", t.tabOffBg, t.tabOffFg,
+                "清除请假记录", "取消所有成员的请假/休息标记", "清除",
+                v -> {
+                    store.clearLeaves();
+                    renderAll();
+                    ToastSafe.show(this, "请假记录已清除");
                 }));
         if (groupOpen[3]) pageSettings.addView(g2);
 
@@ -1083,25 +1294,25 @@ public class MainActivity extends Activity {
     private View sectionHeader(String text) {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.setPadding(0, dp(4), 0, dp(8));
-        TextView h = makeText(15, t.textPrimary);
+        wrap.setPadding(0, dp(4), 0, dp(10));
+        TextView h = makeText(16, t.textPrimary);
         h.setTypeface(h.getTypeface(), Typeface.BOLD);
+        h.setLetterSpacing(0.03f);
         h.setText(text);
         wrap.addView(h);
         View line = new View(this);
         line.setBackgroundColor(t.main);
-        line.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(2)));
-        wrap.addView(line);
+        wrap.addView(line, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(3)));
         return wrap;
     }
 
-    /** 可折叠组标题：点一下收/放该组内容，带 ▾/▸ 指示 */
+    /** 可折叠组标题：点一下收/放该组内容，带 ▾/▸ 指示；折叠态紧凑 */
     private View groupHeader(int idx, String text) {
         LinearLayout h = new LinearLayout(this);
         h.setOrientation(LinearLayout.HORIZONTAL);
         h.setGravity(Gravity.CENTER_VERTICAL);
-        h.setPadding(0, dp(14), 0, dp(6));
+        h.setPadding(0, groupOpen[idx] ? dp(14) : dp(8), 0, dp(4));
         h.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         TextView tv = makeText(12, t.textSecondary);
@@ -1132,14 +1343,14 @@ public class MainActivity extends Activity {
         c.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(t.cardBg);
-        bg.setCornerRadius(dp(12) * 1f);
+        bg.setCornerRadius(dp(14) * 1f);
         bg.setStroke(dp(1), t.cardStroke);
         c.setBackground(bg);
-        int p = dp(14);
+        int p = dp(16);
         c.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, 0, dp(10));
+        lp.setMargins(0, 0, 0, dp(12));
         c.setLayoutParams(lp);
         return c;
     }
@@ -1382,6 +1593,91 @@ public class MainActivity extends Activity {
         String u = store.serverUrl();
         if (u == null || u.isEmpty()) return "未设置（仅本地）";
         return u.length() > 40 ? (u.substring(0, 37) + "…") : u;
+    }
+
+    private static final int[] BG_COLORS = {
+            0xFF111827, 0xFFF5F5F5, 0xFF455A64, 0xFFEFEBE9,
+            0xFF3E2723, 0xFFC62828, 0xFFF48FB1, 0xFFFB8C00,
+            0xFFFFF176, 0xFF4CAF50, 0xFF00897B, 0xFF1E88E5,
+            0xFF7B1FA2, 0xFF303F9F, 0xFF0B1020, 0xFF263238
+    };
+
+    private String currentBgDesc() {
+        switch (store.bgMode()) {
+            case 1: return "纯色";
+            case 2: return "图片";
+            default: return "主题默认";
+        }
+    }
+
+    /** 自定义背景：16 色网格 + 相册选图 + 恢复主题默认 */
+    private void showBgDialog() {
+        int p = dp(16);
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(p, dp(8), p, 0);
+
+        android.widget.GridLayout grid = new android.widget.GridLayout(this);
+        grid.setColumnCount(4);
+        body.addView(grid);
+        for (int i = 0; i < BG_COLORS.length; i++) {
+            final int ci = i;
+            final int col = i % 4;
+            TextView sw = new TextView(this);
+            sw.setText("");
+            sw.setBackgroundColor(BG_COLORS[i]);
+            int sz = dp(40);
+            android.widget.GridLayout.LayoutParams glp = new android.widget.GridLayout.LayoutParams(sz, sz);
+            glp.setMargins(dp(4), dp(4), dp(4), dp(4));
+            if (col == 0) glp.width = sz + dp(4);
+            grid.addView(sw, glp);
+            sw.setOnClickListener(v -> {
+                store.setBgMode(1);
+                store.setBgColor(BG_COLORS[ci]);
+                refreshTheme();
+                renderAll();
+                dismissBodyDialog(body);
+            });
+        }
+
+        LinearLayout btns = new LinearLayout(this);
+        btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setPadding(0, dp(12), 0, 0);
+        TextView pickImg = makeText(14, t.main);
+        pickImg.setTypeface(pickImg.getTypeface(), Typeface.BOLD);
+        pickImg.setText("📷 相册选图");
+        pickImg.setGravity(Gravity.CENTER);
+        pickImg.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        pickImg.setOnClickListener(v -> {
+            android.content.Intent pick = new android.content.Intent(android.content.Intent.ACTION_PICK,
+                    android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            startActivityForResult(pick, 201);
+            dismissBodyDialog(body);
+        });
+        TextView reset = makeText(14, t.textSecondary);
+        reset.setText("恢复主题默认");
+        reset.setGravity(Gravity.CENTER);
+        reset.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        reset.setOnClickListener(v -> {
+            store.setBgMode(0);
+            refreshTheme();
+            renderAll();
+            dismissBodyDialog(body);
+        });
+        btns.addView(pickImg);
+        btns.addView(reset);
+        body.addView(btns);
+
+        AlertDialog dl = new AlertDialog.Builder(this)
+                .setTitle("自定义背景")
+                .setView(body)
+                .show();
+        body.setTag(dl);
+    }
+
+    private void dismissBodyDialog(View body) {
+        Object tag = body.getTag();
+        if (tag instanceof android.app.AlertDialog) ((android.app.AlertDialog) tag).dismiss();
     }
 
     /** 立即联网同步：拉服务器 JSON 覆盖本地排班（服务器权威），再单向回写系统日历 */
