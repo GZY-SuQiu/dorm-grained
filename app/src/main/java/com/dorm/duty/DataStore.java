@@ -139,31 +139,31 @@ public class DataStore {
     public void setServerUrl(String v) { sp.edit().putString("server_url", v == null ? "" : v.trim()).apply(); }
 
     // ---------- 备份密钥（SQ-XXXX-XXXX-XXXX-XXXX-密文块） ----------
-    private static final String BACKUP_AES_KEY = "SQ_G_SuQiu_2026"; // 16 字节 AES-128 固定密钥
+    // 说明：CI/Android 编译环境无法使用 javax.crypto，故用 java.security
+    //       (MessageDigest，全 Android 版本可用) 派生密钥流 + 对称 XOR 混淆。
+    //       目的：剪贴板里不出现明文姓名（非对抗性加密，够用）。
+    private static final String BACKUP_KEY_SRC = "SQ_G_SuQiu_2026";
     private static final String B36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    private static byte[] aesEncryptBytes(byte[] plain) {
+    /** 由固定口令派生 16 字节密钥流 */
+    private static byte[] keyStream() {
+        byte[] k = new byte[16];
         try {
-            javax.crypto.SecretKeySpec ks = new javax.crypto.SecretKeySpec(
-                    BACKUP_AES_KEY.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
-            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/ECB/PKCS5Padding");
-            c.init(javax.crypto.Cipher.ENCRYPT_MODE, ks);
-            return c.doFinal(plain);
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(BACKUP_KEY_SRC.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            for (int i = 0; i < 16; i++) k[i] = h[i % 32];
         } catch (Exception e) {
-            return null;
+            for (int i = 0; i < 16; i++) k[i] = (byte) BACKUP_KEY_SRC.charAt(i);
         }
+        return k;
     }
 
-    private static byte[] aesDecryptBytes(byte[] enc) {
-        try {
-            javax.crypto.SecretKeySpec ks = new javax.crypto.SecretKeySpec(
-                    BACKUP_AES_KEY.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
-            javax.crypto.Cipher c = javax.crypto.Cipher.getInstance("AES/ECB/PKCS5Padding");
-            c.init(javax.crypto.Cipher.DECRYPT_MODE, ks);
-            return c.doFinal(enc);
-        } catch (Exception e) {
-            return null;
-        }
+    /** 对称 XOR：加密与解密同一步骤 */
+    private static byte[] xorCipher(byte[] data) {
+        byte[] k = keyStream();
+        byte[] out = new byte[data.length];
+        for (int i = 0; i < data.length; i++) out[i] = (byte) (data[i] ^ k[i % k.length]);
+        return out;
     }
 
     /** 字节 → 36 进制（每字节 2 个字符，全大写字母+数字） */
@@ -197,8 +197,7 @@ public class DataStore {
     public String encodeBackup() {
         String json = exportAll();
         if (json == null) return null;
-        byte[] enc = aesEncryptBytes(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        if (enc == null) return null;
+        byte[] enc = xorCipher(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
         java.util.Random rnd = new java.util.Random();
         StringBuilder sb = new StringBuilder("SQ-");
@@ -225,8 +224,7 @@ public class DataStore {
             String data = up.substring(18);
             byte[] enc = fromBase36(data);
             if (enc == null) return false;
-            byte[] plain = aesDecryptBytes(enc);
-            if (plain == null) return false;
+            byte[] plain = xorCipher(enc);
             return importAll(new String(plain, java.nio.charset.StandardCharsets.UTF_8));
         }
         if (s.startsWith("{")) {
