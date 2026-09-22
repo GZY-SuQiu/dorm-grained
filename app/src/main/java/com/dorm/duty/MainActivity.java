@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
     private final View[] tabDots = new View[5];
     private int currentTab;
     private int expandedIdx = -1; // 成员页当前展开 ⚙ 面板的成员序号
-    private final boolean[] groupOpen = new boolean[9]; // 设置页 9 个组默认全展开
+    private final boolean[] groupOpen = new boolean[10]; // 设置页 10 个组默认全展开
 
     // 翻页时钟
     private TextView clkH, clkM, clkS;
@@ -308,14 +308,32 @@ public class MainActivity extends Activity {
         bar.setPadding(0, 0, 0, dp(12));
         titleMain = makeText(20, t.mainDark);
         titleMain.setTypeface(titleMain.getTypeface(), Typeface.BOLD);
-        titleMain.setText("🏠 寝室值日 · " + store.roomName());
+        updateTitleText();
         titleMain.setLayoutParams(new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         bar.addView(titleMain);
         hintView = makeText(12, t.textSecondary);
-        hintView.setText(store.memberCount() + " 人 · 每天 " + store.perDay() + " 人值日");
+        updateHintText();
         bar.addView(hintView);
         return bar;
+    }
+
+    /** 顶栏标题：随模式切换 */
+    private void updateTitleText() {
+        titleMain.setText((store.isClassMode() ? "🏫 班级值日 · " : "🏠 寝室值日 · ")
+                + store.roomName());
+    }
+
+    /** 顶栏副标题：人数与值班说明 */
+    private void updateHintText() {
+        int cnt = store.memberCount();
+        if (store.isClassMode()) {
+            int gs = store.groupSize();
+            int groups = cnt == 0 ? 0 : (cnt + gs - 1) / gs;
+            hintView.setText(cnt + " 人 · " + groups + " 组 · 每天 1 组值日");
+        } else {
+            hintView.setText(cnt + " 人 · 每天 " + store.perDay() + " 人值日");
+        }
     }
 
     /** 底部菜单：统一圆底字符图标，选中绿色、未选中浅灰，高度固定对齐 */
@@ -413,15 +431,30 @@ public class MainActivity extends Activity {
         date.setText("今天 · " + today.format(D_FMT));
         card.addView(date);
         TextView label = makeText(13, t.textSecondary);
-        label.setText("今日值日");
+        if (store.isClassMode()) {
+            label.setText("今日值日组 · " + store.groupLabelOf(today));
+        } else {
+            label.setText("今日值日");
+        }
         card.addView(label);
-        TextView big = makeText(28, t.mainDark);
+        TextView big = makeText(24, t.mainDark);
         big.setTypeface(big.getTypeface(), Typeface.BOLD);
-        big.setText(names.isEmpty() ? "还没有人" : String.join("  ", store.dutyDisplayOf(today)));
-        card.addView(big);
+        if (store.isClassMode()) {
+            big.setText(names.isEmpty() ? "还没有人" : store.groupLabelOf(today));
+            card.addView(big);
+            if (!names.isEmpty()) {
+                TextView grpNames = makeText(14, t.textPrimary);
+                grpNames.setText(String.join("  ", store.dutyDisplayOf(today)));
+                grpNames.setPadding(0, dp(4), 0, 0);
+                card.addView(grpNames);
+            }
+        } else {
+            big.setText(names.isEmpty() ? "还没有人" : String.join("  ", store.dutyDisplayOf(today)));
+            card.addView(big);
+        }
         if (names.isEmpty()) {
             TextView tip = makeText(12, t.textSecondary);
-            tip.setText("到「成员」页添加寝室成员后自动生成排班");
+            tip.setText("到「成员」页添加成员后自动生成排班");
             card.addView(tip);
         }
         pageToday.addView(card);
@@ -447,7 +480,7 @@ public class MainActivity extends Activity {
         for (int i = 1; i <= 3; i++) {
             LocalDate d = today.plusDays(i);
             List<String> n2 = store.dutyOf(d);
-            next.addView(hRow(dd[i - 1], n2.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(d))));
+            next.addView(hRow(dd[i - 1], dutyLine(d)));
         }
         pageToday.addView(next);
 
@@ -473,8 +506,14 @@ public class MainActivity extends Activity {
         tickClock();
 
         TextView rule = makeText(12, t.textSecondary);
-        rule.setText("轮换规则：从起始日期开始，按成员顺序每天 " + store.perDay()
-                + " 人值日，轮完一圈循环。");
+        if (store.isClassMode()) {
+            String cyc = store.weeklyCycle() ? "按周循环（对齐周一 · 组对应星期几）" : "顺序轮完（从起始日逐天轮）";
+            rule.setText("轮换规则：全班分 " + store.groupsOf().size() + " 组（每组约 "
+                    + store.groupSize() + " 人），每天 1 组值日，" + cyc + "。");
+        } else {
+            rule.setText("轮换规则：从起始日期开始，按成员顺序每天 " + store.perDay()
+                    + " 人值日，轮完一圈循环。");
+        }
         rule.setPadding(0, dp(4), 0, 0);
         pageToday.addView(rule);
     }
@@ -533,7 +572,13 @@ public class MainActivity extends Activity {
             TextView duty = makeText(14, t.textPrimary);
             duty.setTypeface(duty.getTypeface(), Typeface.BOLD);
             duty.setGravity(Gravity.END);
-            duty.setText(names.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(d)));
+            if (names.isEmpty()) {
+                duty.setText("—");
+            } else if (store.isClassMode()) {
+                duty.setText(store.groupLabelOf(d) + " · " + String.join("、", store.dutyDisplayOf(d)));
+            } else {
+                duty.setText(String.join("、", store.dutyDisplayOf(d)));
+            }
             duty.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
             row.addView(duty);
@@ -585,7 +630,7 @@ public class MainActivity extends Activity {
             hr.addView(hdate);
             TextView hname = makeText(13, t.textPrimary);
             hname.setTypeface(hname.getTypeface(), Typeface.BOLD);
-            hname.setText(hs.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(hd)));
+            hname.setText(dutyLine(hd));
             hname.setGravity(Gravity.END);
             hname.setLayoutParams(new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -612,8 +657,11 @@ public class MainActivity extends Activity {
         List<DataStore.Member> ms = store.members();
 
         TextView cnt = makeText(12, t.textSecondary);
-        cnt.setText("共 " + ms.size() + " 人 · 最多 12 · 每天 " + store.perDay() + " 人值日"
-                + (ms.size() < 4 ? "（至少 4 人）" : ""));
+        int cap = store.memberLimit();
+        String capText = store.isClassMode()
+                ? ("共 " + ms.size() + " 人 · 最多 " + cap + " · 全班分 " + (ms.size() == 0 ? 0 : (ms.size() + store.groupSize() - 1) / store.groupSize()) + " 组")
+                : ("共 " + ms.size() + " 人 · 最多 " + cap + " · 每天 " + store.perDay() + " 人值日"
+                   + (ms.size() < 4 ? "（至少 4 人）" : ""));
         pageMembers.addView(cnt);
 
         for (int i = 0; i < ms.size(); i++) {
@@ -768,8 +816,8 @@ public class MainActivity extends Activity {
             String name = et.getText().toString().trim();
             String bed = etB.getText().toString().trim();
             if (name.isEmpty()) return;
-            if (store.memberCount() >= 12) {
-                ToastSafe.show(this, "最多 12 人");
+            if (store.memberCount() >= store.memberLimit()) {
+                ToastSafe.show(this, "最多 " + store.memberLimit() + " 人");
                 return;
             }
             if (store.members().stream().anyMatch(x -> x.name.equals(name))) {
@@ -913,17 +961,37 @@ public class MainActivity extends Activity {
         pageSettings.removeAllViews();
         pageSettings.addView(sectionHeader("设置"));
 
+        // —— 模式（寝室 / 班级） ——
+        pageSettings.addView(groupHeader(0, "值日模式"));
+        LinearLayout gMode = card();
+        boolean isCls = store.isClassMode();
+        gMode.addView(settingRow("模", isCls ? 0xFFE8F5E9 : 0xFFE3F2FD, isCls ? t.mainDark : 0xFF1976D2,
+                "值日模式",
+                isCls ? "班级 · 全班分组，每天 1 组值日" : "寝室 · 成员逐个轮值",
+                isCls ? "班级" : "寝室",
+                v -> {
+                    boolean next = !store.isClassMode();
+                    store.setClassMode(next);
+                    renderAll();
+                    if (next && store.memberCount() < 4)
+                        ToastSafe.show(this, "已切到班级模式 · 请先到成员页录入全班名单");
+                    else
+                        ToastSafe.show(this, next ? "已切到班级模式" : "已切到寝室模式");
+                }));
+        if (groupOpen[0]) pageSettings.addView(gMode);
+
         // —— 基本设置 ——
-        pageSettings.addView(groupHeader(0, "基本设置"));
+        pageSettings.addView(groupHeader(1, "基本设置"));
         LinearLayout g1 = card();
-        g1.addView(settingRow("寝", t.tabOffBg, t.textPrimary,
-                "寝室名称", "用于顶栏与日历事件显示", store.roomName(),
+        boolean clsMode = store.isClassMode();
+        g1.addView(settingRow(clsMode ? "班" : "寝", t.tabOffBg, t.textPrimary,
+                clsMode ? "班级名称" : "寝室名称", "用于顶栏与日历事件显示", store.roomName(),
                 v -> {
                     final EditText et = new EditText(this);
                     et.setText(store.roomName());
                     et.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16)});
                     new AlertDialog.Builder(this)
-                            .setTitle("寝室名称")
+                            .setTitle(clsMode ? "班级名称" : "寝室名称")
                             .setView(et)
                             .setPositiveButton("保存", (d, w) -> {
                                 String n = et.getText().toString().trim();
@@ -942,10 +1010,10 @@ public class MainActivity extends Activity {
                     renderAll();
                     ToastSafe.show(this, "起始日期已设为 " + dd.format(D_FMT));
                 })));
-        if (groupOpen[0]) pageSettings.addView(g1);
+        if (groupOpen[1]) pageSettings.addView(g1);
 
         // —— 外观（多主题） ——
-        pageSettings.addView(groupHeader(1, "外观 · 主题"));
+        pageSettings.addView(groupHeader(2, "外观 · 主题"));
         LinearLayout g6 = card();
         int curIdx = ThemeManager.index(this);
         for (int i = 0; i < ThemeManager.ALL.length; i++) {
@@ -991,10 +1059,10 @@ public class MainActivity extends Activity {
         g6.addView(settingRow("背", t.tabOffBg, t.tabOffFg,
                 "自定义背景", currentBgDesc(), "设置",
                 v -> showBgDialog()));
-        if (groupOpen[1]) pageSettings.addView(g6);
+        if (groupOpen[2]) pageSettings.addView(g6);
 
         // —— 值日提醒 ——
-        pageSettings.addView(groupHeader(2, "值日提醒"));
+        pageSettings.addView(groupHeader(3, "值日提醒"));
         LinearLayout gRem = card();
         gRem.addView(settingRow("铃", t.tabOffBg, t.textPrimary,
                 "值日提醒", store.isReminderEnabled() ? ("已开 · 每天 " + fmtTime(store)) : "已关闭",
@@ -1027,10 +1095,10 @@ public class MainActivity extends Activity {
                     if (store.isReminderEnabled()) ReminderManager.scheduleDaily(this, store);
                     renderAll();
                 }, store.reminderHour(), store.reminderMinute(), true).show()));
-        if (groupOpen[2]) pageSettings.addView(gRem);
+        if (groupOpen[3]) pageSettings.addView(gRem);
 
         // —— 轮换 ——
-        pageSettings.addView(groupHeader(3, "轮换"));
+        pageSettings.addView(groupHeader(4, "轮换"));
         LinearLayout g2 = card();
         g2.addView(settingRow("重", 0xFFFFF3E0, 0xFFE65100,
                 "重置轮换", "从名单第 1 位重新开始排班", "重置",
@@ -1055,10 +1123,54 @@ public class MainActivity extends Activity {
                     renderAll();
                     ToastSafe.show(this, "请假记录已清除");
                 }));
-        if (groupOpen[3]) pageSettings.addView(g2);
+        if (store.isClassMode()) {
+            g2.addView(divider());
+            // 组大小
+            int[] sizes = {3, 4, 5, 6};
+            LinearLayout gsz = new LinearLayout(this);
+            gsz.setOrientation(LinearLayout.HORIZONTAL);
+            gsz.setGravity(Gravity.CENTER_VERTICAL);
+            gsz.setPadding(0, dp(2), 0, 0);
+            TextView gszL = makeText(13, t.textPrimary);
+            gszL.setText("每组人数");
+            gszL.setPadding(0, 0, dp(8), 0);
+            gsz.addView(gszL);
+            for (int s : sizes) {
+                final int sz = s;
+                TextView b = makeText(12, s == store.groupSize() ? Color.WHITE : t.textPrimary);
+                b.setTypeface(b.getTypeface(), s == store.groupSize() ? Typeface.BOLD : Typeface.NORMAL);
+                b.setText(sz + "");
+                b.setGravity(Gravity.CENTER);
+                b.setPadding(dp(10), dp(5), dp(10), dp(5));
+                GradientDrawable bbg = new GradientDrawable();
+                bbg.setColor(s == store.groupSize() ? t.main : t.tabOffBg);
+                bbg.setCornerRadius(dp(8) * 1f);
+                bbg.setStroke(dp(1), t.cardStroke);
+                b.setBackground(bbg);
+                LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                blp.setMargins(0, 0, dp(6), 0);
+                b.setLayoutParams(blp);
+                b.setOnClickListener(v2 -> { store.setGroupSize(sz); renderAll(); });
+                gsz.addView(b);
+            }
+            g2.addView(gsz);
+            g2.addView(divider());
+            // 轮班周期开关
+            boolean cyc = store.weeklyCycle();
+            g2.addView(settingRow("周", cyc ? 0xFFE8F5E9 : t.tabOffBg, cyc ? t.mainDark : t.tabOffFg,
+                    "轮班周期", cyc ? "按周循环 · 对齐周一（组对应星期几）" : "顺序轮完 · 从起始日逐天轮",
+                    cyc ? "开" : "关",
+                    v -> {
+                        store.setWeeklyCycle(!cyc);
+                        renderAll();
+                        ToastSafe.show(this, !cyc ? "轮班周期已开（按周循环）" : "轮班周期已关（顺序轮完）");
+                    }));
+        }
+        if (groupOpen[4]) pageSettings.addView(g2);
 
         // —— 日历同步 ——
-        pageSettings.addView(groupHeader(4, "日历同步"));
+        pageSettings.addView(groupHeader(5, "日历同步"));
         LinearLayout g3 = card();
         g3.addView(settingRow("历", t.tabOffBg, t.textPrimary,
                 "写入系统日历", "未来 7 天 · 每天 7:00 提醒", "写入",
@@ -1095,7 +1207,7 @@ public class MainActivity extends Activity {
                     }
                     int sel = store.selectedCalendarId();
                     String[] items = new String[cals.size() + 1];
-                    items[0] = "自动（优先自建「寝室值日表」）";
+                    items[0] = autoCalLabel();
                     int checked = 0;
                     for (int i = 0; i < cals.size(); i++) {
                         items[i + 1] = cals.get(i).name;
@@ -1110,10 +1222,10 @@ public class MainActivity extends Activity {
                             })
                             .show();
                 }));
-        if (groupOpen[4]) pageSettings.addView(g3);
+        if (groupOpen[5]) pageSettings.addView(g3);
 
         // —— 数据备份（SQ 密钥，加密不外泄） ——
-        pageSettings.addView(groupHeader(5, "数据备份 · SQ 密钥"));
+        pageSettings.addView(groupHeader(6, "数据备份 · SQ 密钥"));
         LinearLayout gData = card();
         gData.addView(settingRow("备", t.tabOffBg, t.textPrimary,
                 "备份数据（导出密钥）", "复制 SQ- 密钥到剪贴板，内容已加密，不含个人信息", "复制",
@@ -1155,10 +1267,10 @@ public class MainActivity extends Activity {
                             .setNegativeButton("取消", null)
                             .show();
                 }));
-        if (groupOpen[5]) pageSettings.addView(gData);
+        if (groupOpen[6]) pageSettings.addView(gData);
 
         // —— 联网同步（服务器权威源） ——
-        pageSettings.addView(groupHeader(6, "联网同步 · 服务器权威"));
+        pageSettings.addView(groupHeader(7, "联网同步 · 服务器权威"));
         LinearLayout gNet = card();
         gNet.addView(settingRow("网", t.tabOffBg, t.textPrimary,
                 "服务器地址", serverUrlDesc(), "设置",
@@ -1189,18 +1301,18 @@ public class MainActivity extends Activity {
         TextView noteNet = makeText(11, t.textSecondary);
         noteNet.setText("权威优先级：服务器 > 本机 App > 系统日历。你手动改系统日历不会影响 App；App 只把排班单向写入日历。");
         gNet.addView(noteNet);
-        if (groupOpen[6]) pageSettings.addView(gNet);
+        if (groupOpen[7]) pageSettings.addView(gNet);
 
         // —— 隐私 ——
-        pageSettings.addView(groupHeader(7, "隐私"));
+        pageSettings.addView(groupHeader(8, "隐私"));
         LinearLayout g5 = card();
         g5.addView(settingRow("保", t.tabOffBg, t.tabOffFg,
                 "用户隐私协议", "再次查看隐私保护条款", "查看",
                 v -> dialogPrivacy()));
-        if (groupOpen[7]) pageSettings.addView(g5);
+        if (groupOpen[8]) pageSettings.addView(g5);
 
         // —— 诊断 ——
-        pageSettings.addView(groupHeader(8, "诊断"));
+        pageSettings.addView(groupHeader(9, "诊断"));
         String crashSummary = CrashLog.lastSummary(this);
         LinearLayout g4 = card();
         g4.addView(settingRow("崩", crashSummary.isEmpty() ? t.tabOffBg : 0xFFFFEBEE,
@@ -1214,7 +1326,7 @@ public class MainActivity extends Activity {
                             .setPositiveButton("知道了", null)
                             .show();
                 }));
-        if (groupOpen[8]) pageSettings.addView(g4);
+        if (groupOpen[9]) pageSettings.addView(g4);
 
         TextView note = makeText(12, t.textSecondary);
         note.setText("排班数据以 App 内存储为准；系统日历仅作展示与提醒。");
@@ -1298,8 +1410,8 @@ public class MainActivity extends Activity {
     // ============================ 渲染调度 ============================
 
     private void renderAll() {
-        titleMain.setText("🏠 寝室值日 · " + store.roomName());
-        hintView.setText(store.memberCount() + " 人 · 每天 " + store.perDay() + " 人值日");
+        updateTitleText();
+        updateHintText();
         renderToday();
         renderPlan();
         renderMembers();
@@ -1600,10 +1712,24 @@ public class MainActivity extends Activity {
     /** 「写入目标日历」当前指向的描述 */
     private String calTargetDesc() {
         int sel = store.selectedCalendarId();
-        if (sel <= 0) return "自动（优先自建「寝室值日表」）";
+        if (sel <= 0) return autoCalLabel();
         for (CalendarSync.CalInfo ci : calSync.listWritable())
             if (ci.id == sel) return ci.name;
         return "已指定 #" + sel + "（可能已失效，将自动回退）";
+    }
+
+    /** 自动目标日历的展示文案（随模式） */
+    private String autoCalLabel() {
+        return store.isClassMode() ? "自动（优先自建「班级值日表」）" : "自动（优先自建「寝室值日表」）";
+    }
+
+    /** 某天值日显示行：班级=「第 N 组 · 成员…」；寝室=「成员…」；无人=「—」 */
+    private String dutyLine(LocalDate d) {
+        List<String> ns = store.dutyOf(d);
+        if (ns.isEmpty()) return "—";
+        if (store.isClassMode())
+            return store.groupLabelOf(d) + " · " + String.join("、", store.dutyDisplayOf(d));
+        return String.join("、", store.dutyDisplayOf(d));
     }
 
     /** 服务器地址当前描述 */

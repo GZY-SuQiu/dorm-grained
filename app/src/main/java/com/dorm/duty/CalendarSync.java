@@ -62,7 +62,7 @@ public class CalendarSync {
         v.put(CalendarContract.Calendars.ACCOUNT_NAME, ACCOUNT);
         v.put(CalendarContract.Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL);
         v.put(CalendarContract.Calendars.NAME, ACCOUNT);
-        v.put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, "寝室值日表");
+        v.put(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, store.isClassMode() ? "班级值日表" : "寝室值日表");
         v.put(CalendarContract.Calendars.CALENDAR_COLOR, 0xFF2E7D32);
         v.put(CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL, CalendarContract.Calendars.CAL_ACCESS_OWNER);
         v.put(CalendarContract.Calendars.OWNER_ACCOUNT, ACCOUNT);
@@ -147,9 +147,15 @@ public class CalendarSync {
             if (names.isEmpty()) continue;
             long start = d.atStartOfDay(z).toInstant().toEpochMilli() + 7L * 3600_000; // 7:00
             long end = start + 15L * 3600_000; // 22:00
+            String title;
+            if (store.isClassMode()) {
+                title = "值日：" + store.groupLabelOf(d);
+            } else {
+                title = "值日：" + String.join("、", store.dutyDisplayOf(d));
+            }
             ContentValues v = new ContentValues();
             v.put(CalendarContract.Events.CALENDAR_ID, calId);
-            v.put(CalendarContract.Events.TITLE, "值日：" + String.join("、", store.dutyDisplayOf(d)));
+            v.put(CalendarContract.Events.TITLE, title);
             v.put(CalendarContract.Events.DESCRIPTION, makeTag(d, names));
             v.put(CalendarContract.Events.DTSTART, start);
             v.put(CalendarContract.Events.DTEND, end);

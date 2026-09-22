@@ -31,6 +31,10 @@ public class DataStore {
                 x.name + ((x.bed == null || x.bed.isEmpty()) ? "" : "（" + x.bed + "）");
     }
 
+    // ---------- 模式（dorm 寝室 / class 班级） ----------
+    public boolean isClassMode() { return sp.getBoolean("mode_class", false); }
+    public void setClassMode(boolean v) { sp.edit().putBoolean("mode_class", v).apply(); }
+
     // ---------- 寝室配置 ----------
     public boolean isPrivacyAccepted() { return sp.getBoolean("privacy_accepted", false); }
     public void setPrivacyAccepted(boolean v) { sp.edit().putBoolean("privacy_accepted", v).apply(); }
@@ -41,7 +45,18 @@ public class DataStore {
     public int size() { return sp.getInt("room_size", 6); }
     public void setSize(int v) { sp.edit().putInt("room_size", v).apply(); }
 
-    public int perDay() { return memberCount() <= 6 ? 1 : 2; } // 按实际成员数：6人以下每天1人，7人以上每天2人
+    /** 每天值日人数：寝室=按成员数 1~2；班级=组大小（整组值班） */
+    public int perDay() {
+        if (isClassMode()) return groupSize();
+        return memberCount() <= 6 ? 1 : 2;
+    }
+
+    // ---------- 班级配置 ----------
+    public int groupSize() { return sp.getInt("cls_group_size", 4); }
+    public void setGroupSize(int v) { sp.edit().putInt("cls_group_size", v).apply(); }
+    /** 轮班周期开关：true=按周循环（组绑定星期几，7天大周期）；false=顺序轮完 */
+    public boolean weeklyCycle() { return sp.getBoolean("cls_cycle_weekly", true); }
+    public void setWeeklyCycle(boolean v) { sp.edit().putBoolean("cls_cycle_weekly", v).apply(); }
 
     public LocalDate startDate() {
         long e = sp.getLong("start_epoch", LocalDate.now().toEpochDay());
@@ -69,6 +84,9 @@ public class DataStore {
     }
 
     public int memberCount() { return members().size(); }
+
+    /** 名单位上限：寝室 12，班级 60 */
+    public int memberLimit() { return isClassMode() ? 60 : 12; }
 
     public void addMember(String name, String bed) {
         List<Member> m = members();
@@ -253,6 +271,9 @@ public class DataStore {
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
             if (o.has("members")) e.putString("members", o.getString("members"));
+            if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
+            if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
+            if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
             e.apply();
             return true;
         } catch (Exception e) {
@@ -265,11 +286,14 @@ public class DataStore {
     public String exportAll() {
         try {
             JSONObject o = new JSONObject();
-            o.put("v", 1);
+            o.put("v", 2);
             o.put("room_name", sp.getString("room_name", "我的寝室"));
             o.put("start_epoch", sp.getLong("start_epoch", LocalDate.now().toEpochDay()));
             o.put("start_index", sp.getInt("start_index", 0));
             o.put("members", sp.getString("members", "[]"));
+            o.put("mode_class", sp.getBoolean("mode_class", false));
+            o.put("cls_group_size", sp.getInt("cls_group_size", 4));
+            o.put("cls_cycle_weekly", sp.getBoolean("cls_cycle_weekly", true));
             o.put("privacy_accepted", sp.getBoolean("privacy_accepted", false));
             o.put("reminder_enabled", sp.getBoolean("reminder_enabled", false));
             o.put("reminder_hour", sp.getInt("reminder_hour", 7));
@@ -299,6 +323,9 @@ public class DataStore {
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
             if (o.has("members")) e.putString("members", o.getString("members"));
+            if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
+            if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
+            if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
             if (o.has("privacy_accepted")) e.putBoolean("privacy_accepted", o.getBoolean("privacy_accepted"));
             if (o.has("reminder_enabled")) e.putBoolean("reminder_enabled", o.getBoolean("reminder_enabled"));
             if (o.has("reminder_hour")) e.putInt("reminder_hour", o.getInt("reminder_hour"));
@@ -357,16 +384,85 @@ public class DataStore {
         } catch (Exception ignored) {}
     }
 
-    /** 排班核心：某一天值日的人（从 startDate 起，每天 perDay 人顺序轮转） */
+    // ---------- 班级分组（仅班级模式用） ----------
+    /** 按 groupSize 切分成员为组：[[组0成员],[组1成员],...]；末尾不满一组并入最后一组 */
+    public List<List<Member>> groupsOf() {
+        List<Member> m = members();
+        int gs = Math.max(1, groupSize());
+        List<List<Member>> out = new ArrayList<>();
+        for (int i = 0; i < m.size(); i += gs) {
+            out.add(new ArrayList<>(m.subList(i, Math.min(i + gs, m.size()))));
+        }
+        return out;
+    }
+
+    /** 某天值日组号（0-based）；无成员返回 -1。
+     *  周期开=按周循环：排班表对齐到「起始日所在周的周一」为锚点，
+     *        组↔星期几对齐、可预测（第 1 组总是周一…循环）。
+     *  周期关=顺序轮完：从原始起始日期逐天顺序轮完，不绑定星期几。
+     *  两种都用全部组、每天 1 组。 */
+    public int groupIndexOf(LocalDate date) {
+        List<List<Member>> gs = groupsOf();
+        if (gs.isEmpty()) return -1;
+        int gcount = gs.size();
+        LocalDate anchor = startDate();
+        if (weeklyCycle()) {
+            // 对齐到 anchor 所在周的周一（周一=0 … 周日=6）
+            int dow = anchor.getDayOfWeek().getValue() - 1; // MONDAY→0
+            anchor = anchor.minusDays(dow);
+        }
+        long days = date.toEpochDay() - anchor.toEpochDay();
+        if (days < 0) return -1;
+        int total = startIndex() + (int) days;
+        return ((total % gcount) + gcount) % gcount;
+    }
+
+    /** 某天值日组的展示名（班级模式）：第 N 组 */
+    public String groupLabelOf(LocalDate date) {
+        int idx = groupIndexOf(date);
+        if (idx < 0) return "—";
+        return "第 " + (idx + 1) + " 组";
+    }
+
+    /** 排班核心：某一天值日的人。
+     *  寝室模式：顺序轮转 perDay 人；
+     *  班级模式：整组值班，组内请假由组后顺延补位。 */
     public List<String> dutyOf(LocalDate date) {
         List<Member> m = members();
         List<String> out = new ArrayList<>();
         if (m.isEmpty()) return out;
         String ds = date.toString();
-        // 1) 换班/休息覆盖优先
+        // 换班/休息覆盖优先（两模式共用）
         List<String> ovr = getOverride(ds);
         if (ovr != null) return ovr; // 空列表 = 当天全员休息
-        // 2) 基础轮转 + 请假自动补位
+
+        if (isClassMode()) {
+            int g = groupIndexOf(date);
+            if (g < 0) return out;
+            List<List<Member>> groups = groupsOf();
+            if (g >= groups.size()) return out;
+            List<Member> grp = groups.get(g);
+            List<String> leaves = getLeaves(ds);
+            // 组内未请假者直接进
+            List<String> picked = new ArrayList<>();
+            for (Member x : grp) if (!leaves.contains(x.name)) picked.add(x.name);
+            // 组被请假打空（整个组都请假）→ 顺延下一组补满
+            if (picked.isEmpty()) {
+                int total = groups.size();
+                int guard = 0;
+                int cur = g;
+                while (picked.isEmpty() && guard <= total) {
+                    cur = (cur + 1) % total;
+                    guard++;
+                    for (Member x : groups.get(cur))
+                        if (!leaves.contains(x.name)) picked.add(x.name);
+                }
+            }
+            out.addAll(picked);
+            return out;
+        }
+
+        // 寝室模式：基础轮转 + 请假自动补位
         long days = date.toEpochDay() - startDate().toEpochDay();
         if (days < 0) return out;
         int base = startIndex() + (int)(days * perDay());
