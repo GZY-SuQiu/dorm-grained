@@ -42,6 +42,7 @@ public class MainActivity extends Activity {
     private final TextView[] tabLabels = new TextView[5];
     private int currentTab;
     private int expandedIdx = -1; // 成员页当前展开 ⚙ 面板的成员序号
+    private final boolean[] groupOpen = new boolean[9]; // 设置页 9 个组默认全展开
 
     // 翻页时钟
     private TextView clkH, clkM, clkS;
@@ -704,7 +705,7 @@ public class MainActivity extends Activity {
         pageSettings.addView(sectionHeader("设置"));
 
         // —— 基本设置 ——
-        pageSettings.addView(groupHeader("基本设置"));
+        pageSettings.addView(groupHeader(0, "基本设置"));
         LinearLayout g1 = card();
         g1.addView(settingRow("寝", t.tabOffBg, t.textPrimary,
                 "寝室名称", "用于顶栏与日历事件显示", store.roomName(),
@@ -732,10 +733,10 @@ public class MainActivity extends Activity {
                     renderAll();
                     ToastSafe.show(this, "起始日期已设为 " + dd.format(D_FMT));
                 })));
-        pageSettings.addView(g1);
+        if (groupOpen[0]) pageSettings.addView(g1);
 
         // —— 外观（多主题） ——
-        pageSettings.addView(groupHeader("外观 · 主题"));
+        pageSettings.addView(groupHeader(1, "外观 · 主题"));
         LinearLayout g6 = card();
         int curIdx = ThemeManager.index(this);
         for (int i = 0; i < ThemeManager.ALL.length; i++) {
@@ -777,10 +778,10 @@ public class MainActivity extends Activity {
             g6.addView(row);
             if (i > 0) g6.addView(divider());
         }
-        pageSettings.addView(g6);
+        if (groupOpen[1]) pageSettings.addView(g6);
 
         // —— 值日提醒 ——
-        pageSettings.addView(groupHeader("值日提醒"));
+        pageSettings.addView(groupHeader(2, "值日提醒"));
         LinearLayout gRem = card();
         gRem.addView(settingRow("铃", t.tabOffBg, t.textPrimary,
                 "值日提醒", store.isReminderEnabled() ? ("已开 · 每天 " + fmtTime(store)) : "已关闭",
@@ -813,10 +814,10 @@ public class MainActivity extends Activity {
                     if (store.isReminderEnabled()) ReminderManager.scheduleDaily(this, store);
                     renderAll();
                 }, store.reminderHour(), store.reminderMinute(), true).show()));
-        pageSettings.addView(gRem);
+        if (groupOpen[2]) pageSettings.addView(gRem);
 
         // —— 轮换 ——
-        pageSettings.addView(groupHeader("轮换"));
+        pageSettings.addView(groupHeader(3, "轮换"));
         LinearLayout g2 = card();
         g2.addView(settingRow("重", 0xFFFFF3E0, 0xFFE65100,
                 "重置轮换", "从名单第 1 位重新开始排班", "重置",
@@ -825,10 +826,10 @@ public class MainActivity extends Activity {
                     renderAll();
                     ToastSafe.show(this, "轮换已重置");
                 }));
-        pageSettings.addView(g2);
+        if (groupOpen[3]) pageSettings.addView(g2);
 
         // —— 日历同步 ——
-        pageSettings.addView(groupHeader("日历同步"));
+        pageSettings.addView(groupHeader(4, "日历同步"));
         LinearLayout g3 = card();
         g3.addView(settingRow("历", t.tabOffBg, t.textPrimary,
                 "写入系统日历", "未来 7 天 · 每天 7:00 提醒", "写入",
@@ -880,10 +881,10 @@ public class MainActivity extends Activity {
                             })
                             .show();
                 }));
-        pageSettings.addView(g3);
+        if (groupOpen[4]) pageSettings.addView(g3);
 
         // —— 数据备份（SQ 密钥，加密不外泄） ——
-        pageSettings.addView(groupHeader("数据备份 · SQ 密钥"));
+        pageSettings.addView(groupHeader(5, "数据备份 · SQ 密钥"));
         LinearLayout gData = card();
         gData.addView(settingRow("备", t.tabOffBg, t.textPrimary,
                 "备份数据（导出密钥）", "复制 SQ- 密钥到剪贴板，内容已加密，不含个人信息", "复制",
@@ -925,10 +926,10 @@ public class MainActivity extends Activity {
                             .setNegativeButton("取消", null)
                             .show();
                 }));
-        pageSettings.addView(gData);
+        if (groupOpen[5]) pageSettings.addView(gData);
 
         // —— 联网同步（服务器权威源） ——
-        pageSettings.addView(groupHeader("联网同步 · 服务器权威"));
+        pageSettings.addView(groupHeader(6, "联网同步 · 服务器权威"));
         LinearLayout gNet = card();
         gNet.addView(settingRow("网", t.tabOffBg, t.textPrimary,
                 "服务器地址", serverUrlDesc(), "设置",
@@ -959,18 +960,18 @@ public class MainActivity extends Activity {
         TextView noteNet = makeText(11, t.textSecondary);
         noteNet.setText("权威优先级：服务器 > 本机 App > 系统日历。你手动改系统日历不会影响 App；App 只把排班单向写入日历。");
         gNet.addView(noteNet);
-        pageSettings.addView(gNet);
+        if (groupOpen[6]) pageSettings.addView(gNet);
 
         // —— 隐私 ——
-        pageSettings.addView(groupHeader("隐私"));
+        pageSettings.addView(groupHeader(7, "隐私"));
         LinearLayout g5 = card();
         g5.addView(settingRow("保", t.tabOffBg, t.tabOffFg,
                 "用户隐私协议", "再次查看隐私保护条款", "查看",
                 v -> dialogPrivacy()));
-        pageSettings.addView(g5);
+        if (groupOpen[7]) pageSettings.addView(g5);
 
         // —— 诊断 ——
-        pageSettings.addView(groupHeader("诊断"));
+        pageSettings.addView(groupHeader(8, "诊断"));
         String crashSummary = CrashLog.lastSummary(this);
         LinearLayout g4 = card();
         g4.addView(settingRow("崩", crashSummary.isEmpty() ? t.tabOffBg : 0xFFFFEBEE,
@@ -984,7 +985,7 @@ public class MainActivity extends Activity {
                             .setPositiveButton("知道了", null)
                             .show();
                 }));
-        pageSettings.addView(g4);
+        if (groupOpen[8]) pageSettings.addView(g4);
 
         TextView note = makeText(12, t.textSecondary);
         note.setText("排班数据以 App 内存储为准；系统日历仅作展示与提醒。");
@@ -998,7 +999,7 @@ public class MainActivity extends Activity {
         pageAbout.removeAllViews();
         pageAbout.addView(sectionHeader("关于"));
 
-        pageAbout.addView(groupHeader("作者声明"));
+        pageAbout.addView(plainGroupHeader("作者声明"));
         LinearLayout ga = card();
         ga.addView(para("本产品为免费产品，未公开售卖。如果本产品为购买的请立即退款并差评处理！"
                 + "如果被骗作者不承担责任，请尊重开发者！"));
@@ -1018,7 +1019,7 @@ public class MainActivity extends Activity {
         ga.addView(email);
         pageAbout.addView(ga);
 
-        pageAbout.addView(groupHeader("法律声明"));
+        pageAbout.addView(plainGroupHeader("法律声明"));
         LinearLayout gl = card();
         gl.addView(para("本软件仅供个人学习与生活使用的免费产品，未授权任何平台或个人公开售卖。"
                 + "如您通过付费渠道获得本软件，请立即退款并举报。"));
@@ -1095,7 +1096,27 @@ public class MainActivity extends Activity {
         return wrap;
     }
 
-    private View groupHeader(String text) {
+    /** 可折叠组标题：点一下收/放该组内容，带 ▾/▸ 指示 */
+    private View groupHeader(int idx, String text) {
+        LinearLayout h = new LinearLayout(this);
+        h.setOrientation(LinearLayout.HORIZONTAL);
+        h.setGravity(Gravity.CENTER_VERTICAL);
+        h.setPadding(0, dp(14), 0, dp(6));
+        h.setLayoutParams(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView t = makeText(12, t.textSecondary);
+        t.setTypeface(t.getTypeface(), Typeface.BOLD);
+        t.setText((groupOpen[idx] ? "▾ " : "▸ ") + text);
+        h.addView(t);
+        h.setOnClickListener(v -> {
+            groupOpen[idx] = !groupOpen[idx];
+            renderAll();
+        });
+        return h;
+    }
+
+    /** 普通组标题（关于页等不可折叠处用） */
+    private View plainGroupHeader(String text) {
         TextView h = makeText(12, t.textSecondary);
         h.setTypeface(h.getTypeface(), Typeface.BOLD);
         h.setText(text);
