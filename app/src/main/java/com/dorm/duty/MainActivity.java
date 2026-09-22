@@ -1104,10 +1104,10 @@ public class MainActivity extends Activity {
         h.setPadding(0, dp(14), 0, dp(6));
         h.setLayoutParams(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
-        TextView t = makeText(12, t.textSecondary);
-        t.setTypeface(t.getTypeface(), Typeface.BOLD);
-        t.setText((groupOpen[idx] ? "▾ " : "▸ ") + text);
-        h.addView(t);
+        TextView tv = makeText(12, t.textSecondary);
+        tv.setTypeface(tv.getTypeface(), Typeface.BOLD);
+        tv.setText((groupOpen[idx] ? "▾ " : "▸ ") + text);
+        h.addView(tv);
         h.setOnClickListener(v -> {
             groupOpen[idx] = !groupOpen[idx];
             renderAll();
