@@ -22,6 +22,7 @@ import android.widget.TextView;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -34,6 +35,8 @@ public class MainActivity extends Activity {
     private CalendarSync calSync;
 
     private LinearLayout root;
+    private android.widget.FrameLayout host;
+    private android.widget.ImageView bgImage;
     private FrameLayout pageHost;
     private ScrollView svToday, svPlan, svMembers, svSettings, svAbout;
     private LinearLayout pageToday, pagePlan, pageMembers, pageSettings, pageAbout;
@@ -179,27 +182,31 @@ public class MainActivity extends Activity {
 
     /** 页面背景：0=主题色 1=纯色 2=图片 */
     private void applyBackground() {
+        if (bgImage == null) return;
         int m = store.bgMode();
         if (m == 1) {
+            bgImage.setVisibility(View.GONE);
             root.setBackgroundColor(store.bgColor());
             return;
         }
         if (m == 2) {
-            android.graphics.BitmapDrawable d = loadBgImage();
-            if (d != null) {
-                root.setBackground(d);
+            android.graphics.Bitmap b = loadBgBitmap();
+            if (b != null) {
+                bgImage.setImageBitmap(b);
+                bgImage.setVisibility(View.VISIBLE);
+                root.setBackgroundColor(android.graphics.Color.TRANSPARENT);
                 return;
             }
         }
+        bgImage.setVisibility(View.GONE);
         root.setBackgroundColor(t.windowBg);
     }
 
-    private android.graphics.BitmapDrawable loadBgImage() {
+    private android.graphics.Bitmap loadBgBitmap() {
         try {
             java.io.File f = new java.io.File(getExternalFilesDir(null), "bg.jpg");
             if (!f.exists()) return null;
-            android.graphics.Bitmap b = android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
-            return b == null ? null : new android.graphics.BitmapDrawable(getResources(), b, null);
+            return android.graphics.BitmapFactory.decodeFile(f.getAbsolutePath());
         } catch (Exception e) {
             return null;
         }
@@ -260,7 +267,18 @@ public class MainActivity extends Activity {
         svAbout = makePage(pageAbout, 4);
 
         root.addView(buildTabBar());
-        setContentView(root);
+        // host：底层背景 ImageView + 上层内容 root（图片背景时让 root 透明）
+        host = new android.widget.FrameLayout(this);
+        bgImage = new android.widget.ImageView(this);
+        bgImage.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+        bgImage.setVisibility(View.GONE);
+        host.addView(bgImage, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        host.addView(root, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(host);
     }
 
     private LinearLayout newInnerPage() {
@@ -1627,7 +1645,9 @@ public class MainActivity extends Activity {
             sw.setText("");
             sw.setBackgroundColor(BG_COLORS[i]);
             int sz = dp(40);
-            android.widget.GridLayout.LayoutParams glp = new android.widget.GridLayout.LayoutParams(sz, sz);
+            android.widget.GridLayout.LayoutParams glp = new android.widget.GridLayout.LayoutParams();
+            glp.width = sz;
+            glp.height = sz;
             glp.setMargins(dp(4), dp(4), dp(4), dp(4));
             if (col == 0) glp.width = sz + dp(4);
             grid.addView(sw, glp);
