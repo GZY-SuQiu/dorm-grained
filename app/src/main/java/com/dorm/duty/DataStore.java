@@ -142,11 +142,15 @@ public class DataStore {
     public void setStartIndex(int v) { sp.edit().putInt("start_index", v).apply(); }
     public void advanceIndex(int n) { setStartIndex((startIndex() + n) % Math.max(1, memberCount())); }
 
-    // ---------- 成员 ----------
-    public List<Member> members() {
+    // ---------- 成员（寝室/班级 各一套，互不干扰） ----------
+    /** 当前模式用的成员存储键：寝室=members，班级=cls_members */
+    private String membersKey() { return isClassMode() ? "cls_members" : "members"; }
+
+    /** 读指定键的成员列表 */
+    private List<Member> rawMembers(String key) {
         List<Member> list = new ArrayList<>();
         try {
-            JSONArray arr = new JSONArray(sp.getString("members", "[]"));
+            JSONArray arr = new JSONArray(sp.getString(key, "[]"));
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.getJSONObject(i);
                 list.add(new Member(o.getString("n"),
@@ -155,6 +159,27 @@ public class DataStore {
             }
         } catch (Exception ignored) {}
         return list;
+    }
+
+    /** 当前模式的成员 */
+    public List<Member> members() { return rawMembers(membersKey()); }
+
+    /** 一次性迁移：老版本两种模式共用 members。升级后若还没有 cls_members：
+     *  当前是班级模式 → 把 members（班里人）搬进 cls_members 并清空 members，
+     *  寝室模式不受影响；寝室模式 → 只给 cls_members 建空表。 */
+    public void migrateClassMembers() {
+        if (sp.getBoolean("cls_migrated_v1", false)) return;
+        sp.edit().putBoolean("cls_migrated_v1", true).apply();
+        if (sp.contains("cls_members")) return;
+        SharedPreferences.Editor e = sp.edit();
+        if (isClassMode()) {
+            String cur = sp.getString("members", "[]");
+            e.putString("cls_members", cur);
+            e.putString("members", "[]"); // 宿舍名单位空出来，班级数据已搬到 cls_members
+        } else {
+            e.putString("cls_members", "[]");
+        }
+        e.apply();
     }
 
     public int memberCount() { return members().size(); }
@@ -345,7 +370,16 @@ public class DataStore {
             if (o.has("cls_name")) e.putString("cls_name", o.getString("cls_name"));
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
-            if (o.has("members")) e.putString("members", o.getString("members"));
+            boolean clsInBackup = o.optBoolean("mode_class", false);
+            if (o.has("cls_members")) {
+                // 新版备份：两套名单各自落位
+                if (o.has("members")) e.putString("members", o.getString("members"));
+                e.putString("cls_members", o.getString("cls_members"));
+            } else if (o.has("members")) {
+                // 旧版备份：members 是共用名单，按备份时的模式归位
+                if (clsInBackup) e.putString("cls_members", o.getString("members"));
+                else e.putString("members", o.getString("members"));
+            }
             if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
             if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
             if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
@@ -364,12 +398,13 @@ public class DataStore {
     public String exportAll() {
         try {
             JSONObject o = new JSONObject();
-            o.put("v", 2);
+            o.put("v", 3);
             o.put("room_name", sp.getString("room_name", "我的寝室"));
             o.put("cls_name", sp.getString("cls_name", "我的班级"));
             o.put("start_epoch", sp.getLong("start_epoch", LocalDate.now().toEpochDay()));
             o.put("start_index", sp.getInt("start_index", 0));
             o.put("members", sp.getString("members", "[]"));
+            o.put("cls_members", sp.getString("cls_members", "[]"));
             o.put("mode_class", sp.getBoolean("mode_class", false));
             o.put("cls_group_size", sp.getInt("cls_group_size", 4));
             o.put("cls_cycle_weekly", sp.getBoolean("cls_cycle_weekly", true));
@@ -405,7 +440,16 @@ public class DataStore {
             if (o.has("cls_name")) e.putString("cls_name", o.getString("cls_name"));
             if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
             if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
-            if (o.has("members")) e.putString("members", o.getString("members"));
+            boolean clsInBackup = o.optBoolean("mode_class", false);
+            if (o.has("cls_members")) {
+                // 新版备份：两套名单各自落位
+                if (o.has("members")) e.putString("members", o.getString("members"));
+                e.putString("cls_members", o.getString("cls_members"));
+            } else if (o.has("members")) {
+                // 旧版备份：members 是共用名单，按备份时的模式归位
+                if (clsInBackup) e.putString("cls_members", o.getString("members"));
+                else e.putString("members", o.getString("members"));
+            }
             if (o.has("mode_class")) e.putBoolean("mode_class", o.getBoolean("mode_class"));
             if (o.has("cls_group_size")) e.putInt("cls_group_size", o.getInt("cls_group_size"));
             if (o.has("cls_cycle_weekly")) e.putBoolean("cls_cycle_weekly", o.getBoolean("cls_cycle_weekly"));
@@ -435,7 +479,7 @@ public class DataStore {
         }
     }
 
-    private void saveMembers(List<Member> m) {
+    private void saveMembersRaw(String key, List<Member> m) {
         try {
             JSONArray arr = new JSONArray();
             for (Member x : m) {
@@ -445,9 +489,12 @@ public class DataStore {
                 o.put("b", x.bed == null ? "" : x.bed);
                 arr.put(o);
             }
-            sp.edit().putString("members", arr.toString()).apply();
+            sp.edit().putString(key, arr.toString()).apply();
         } catch (Exception ignored) {}
     }
+
+    /** 保存到当前模式的名单位 */
+    private void saveMembers(List<Member> m) { saveMembersRaw(membersKey(), m); }
 
     // ---------- 签到 ----------
     public boolean isChecked(String dateStr, String name) {

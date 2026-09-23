@@ -85,6 +85,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         installCrashHandler();
         store = new DataStore(this);
+        store.migrateClassMembers(); // 老版升级：班级/寝室名单分家
         calSync = new CalendarSync(this, store);
         t = ThemeManager.get(this);
         buildUi();
