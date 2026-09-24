@@ -43,6 +43,17 @@ public class MainActivity extends Activity {
     private int currentTab;
     private int expandedIdx = -1; // 成员页当前展开 ⚙ 面板的成员序号
 
+    // 翻页时钟
+    private TextView clkH, clkM, clkS;
+    private final android.os.Handler clockHandler = new android.os.Handler();
+    private final Runnable clockTick = new Runnable() {
+        @Override
+        public void run() {
+            tickClock();
+            clockHandler.postDelayed(this, 1000);
+        }
+    };
+
     private static final String[] TAB_LABELS = {"今日值日", "排班", "成员", "设置", "关于"};
     private static final char[] TAB_CHARS = {'值', '排', '员', '设', '著'};
 
@@ -86,8 +97,16 @@ public class MainActivity extends Activity {
         renderAll();
         // 提醒对齐：若已开启，重新武装明天定点（应用重启后状态可能漂移）
         ReminderManager.scheduleDaily(this, store);
+        // 翻页时钟：每秒 tick
+        clockHandler.postDelayed(clockTick, 300);
         // 首次启动：隐私协议确认（接受才进入，拒绝立即退出）
         if (!store.isPrivacyAccepted()) showPrivacyDialog();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        clockHandler.removeCallbacksAndMessages(null);
     }
 
     /** 隐私协议：只弹一次，点接受才继续，点拒绝立即退出 */
@@ -341,6 +360,27 @@ public class MainActivity extends Activity {
             next.addView(hRow(dd[i - 1], n2.isEmpty() ? "—" : String.join("、", store.dutyDisplayOf(d))));
         }
         pageToday.addView(next);
+
+        // 翻页时钟（番茄钟风格实时时间，数字变化时 3D 翻转）
+        LinearLayout ck = card();
+        TextView ckLabel = makeText(12, t.textSecondary);
+        ckLabel.setText("当前时间 · 番茄时钟");
+        ck.addView(ckLabel);
+        LinearLayout clockRow = new LinearLayout(this);
+        clockRow.setOrientation(LinearLayout.HORIZONTAL);
+        clockRow.setGravity(Gravity.CENTER);
+        clockRow.setPadding(0, dp(8), 0, 0);
+        clkH = digitView();
+        clkM = digitView();
+        clkS = digitView();
+        clockRow.addView(clkH);
+        clockRow.addView(clockColon());
+        clockRow.addView(clkM);
+        clockRow.addView(clockColon());
+        clockRow.addView(clkS);
+        ck.addView(clockRow);
+        pageToday.addView(ck);
+        tickClock();
 
         TextView rule = makeText(12, t.textSecondary);
         rule.setText("轮换规则：从起始日期开始，按成员顺序每天 " + store.perDay()
@@ -803,7 +843,7 @@ public class MainActivity extends Activity {
                 }));
         g3.addView(divider());
         g3.addView(settingRow("盾", 0xFFE3F2FD, 0xFF1976D2,
-                "校验并修复", "本地日历被删改时一键还原", "校验",
+                "校验并修复", "单向回写：用 App 排班数据修复系统日历；你在日历里的改动不会被 App 读取", "校验",
                 v -> {
                     if (!calPermitted()) return;
                     int[] r = calSync.verifyAndRepair(7);
@@ -886,6 +926,40 @@ public class MainActivity extends Activity {
                             .show();
                 }));
         pageSettings.addView(gData);
+
+        // —— 联网同步（服务器权威源） ——
+        pageSettings.addView(groupHeader("联网同步 · 服务器权威"));
+        LinearLayout gNet = card();
+        gNet.addView(settingRow("网", t.tabOffBg, t.textPrimary,
+                "服务器地址", serverUrlDesc(), "设置",
+                v -> {
+                    final EditText etU = new EditText(this);
+                    etU.setText(store.serverUrl());
+                    etU.setHint("https://…/schedule.json");
+                    etU.setFilters(new InputFilter[]{new InputFilter.LengthFilter(300)});
+                    etU.setTextColor(t.textPrimary);
+                    etU.setHintTextColor(t.textSecondary);
+                    new AlertDialog.Builder(this)
+                            .setTitle("服务器地址")
+                            .setMessage("放排班 JSON（格式同「备份数据」）的服务端 URL。留空=只用本地。")
+                            .setView(etU)
+                            .setPositiveButton("保存", (d, w) -> {
+                                store.setServerUrl(etU.getText().toString().trim());
+                                renderAll();
+                                ToastSafe.show(this, "已保存服务器地址");
+                            })
+                            .setNegativeButton("取消", null)
+                            .show();
+                }));
+        gNet.addView(divider());
+        gNet.addView(settingRow("同", t.tabOffBg, t.textPrimary,
+                "立即同步", "拉服务器数据覆盖本地排班，并回写系统日历", "同步",
+                v -> onlineSyncNow()));
+        gNet.addView(divider());
+        TextView noteNet = makeText(11, t.textSecondary);
+        noteNet.setText("权威优先级：服务器 > 本机 App > 系统日历。你手动改系统日历不会影响 App；App 只把排班单向写入日历。");
+        gNet.addView(noteNet);
+        pageSettings.addView(gNet);
 
         // —— 隐私 ——
         pageSettings.addView(groupHeader("隐私"));
@@ -1185,6 +1259,60 @@ public class MainActivity extends Activity {
         return tv;
     }
 
+    /** 数字方块（时钟用）：卡片底 + 等宽大数字 */
+    private TextView digitView() {
+        TextView v = new TextView(this);
+        v.setTextSize(30);
+        v.setTypeface(Typeface.MONOSPACE);
+        v.setTextColor(t.textPrimary);
+        v.setGravity(Gravity.CENTER);
+        v.setText("--");
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(t.cardBg);
+        bg.setCornerRadius(dp(10) * 1f);
+        bg.setStroke(dp(1), t.cardStroke);
+        v.setBackground(bg);
+        int w = dp(64);
+        int h = dp(72);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        v.setLayoutParams(lp);
+        v.setPivotY(v.getHeight() == 0 ? dp(36) : v.getHeight() / 2f);
+        return v;
+    }
+
+    private View clockColon() {
+        TextView c = makeText(26, t.mainDark);
+        c.setTypeface(c.getTypeface(), Typeface.BOLD);
+        c.setText(":");
+        c.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(dp(2), 0, dp(2), 0);
+        c.setLayoutParams(lp);
+        return c;
+    }
+
+    /** 秒针跳动：刷新三块数字，变化的翻一页（rotationX -90 → 0） */
+    private void tickClock() {
+        if (clkH == null) return;
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        flipTo(clkH, String.format("%02d", c.get(java.util.Calendar.HOUR_OF_DAY)));
+        flipTo(clkM, String.format("%02d", c.get(java.util.Calendar.MINUTE)));
+        flipTo(clkS, String.format("%02d", c.get(java.util.Calendar.SECOND)));
+    }
+
+    private void flipTo(TextView v, String text) {
+        if (v.getText().toString().equals(text)) return;
+        v.setRotationX(-90f);
+        v.setText(text);
+        v.animate()
+                .rotationX(0f)
+                .setDuration(320)
+                .setInterpolator(new android.view.animation.DecelerateInterpolator(2f))
+                .start();
+    }
+
     private TextView makeText(int sp, int color) {
         TextView t = new TextView(this);
         t.setTextSize(sp);
@@ -1226,6 +1354,62 @@ public class MainActivity extends Activity {
         for (CalendarSync.CalInfo ci : calSync.listWritable())
             if (ci.id == sel) return ci.name;
         return "已指定 #" + sel + "（可能已失效，将自动回退）";
+    }
+
+    /** 服务器地址当前描述 */
+    private String serverUrlDesc() {
+        String u = store.serverUrl();
+        if (u == null || u.isEmpty()) return "未设置（仅本地）";
+        return u.length() > 40 ? (u.substring(0, 37) + "…") : u;
+    }
+
+    /** 立即联网同步：拉服务器 JSON 覆盖本地排班（服务器权威），再单向回写系统日历 */
+    private void onlineSyncNow() {
+        final String url = store.serverUrl();
+        if (url == null || url.isEmpty()) {
+            ToastSafe.show(this, "先设置「服务器地址」再同步");
+            return;
+        }
+        ToastSafe.show(this, "正在同步…");
+        new Thread(() -> {
+            final String json = httpGet(url);
+            runOnUiThread(() -> {
+                if (json == null) {
+                    ToastSafe.show(this, "同步失败：服务器不可达或网络错误");
+                    return;
+                }
+                if (!store.applyServerData(json)) {
+                    ToastSafe.show(this, "同步失败：服务器数据格式无效");
+                    return;
+                }
+                int n = calSync.syncDuty(7); // 单向回写系统日历（不影响本地权威数据）
+                renderAll();
+                ToastSafe.show(this, "已联网同步" + (n >= 0 ? "，并回写 " + n + " 条日历" : "（日历回写跳过）"));
+            });
+        }).start();
+    }
+
+    /** 简单 HTTP GET，失败返回 null（8s 超时） */
+    private String httpGet(String url) {
+        try {
+            java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                    new java.net.URL(url).openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            c.setRequestProperty("Accept", "application/json");
+            int code = c.getResponseCode();
+            if (code != 200) { c.disconnect(); return null; }
+            java.io.InputStream is = c.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = is.read(buf)) > 0) bos.write(buf, 0, n);
+            is.close();
+            c.disconnect();
+            return new String(bos.toByteArray());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void requestPermissions() {

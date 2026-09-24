@@ -134,6 +134,30 @@ public class DataStore {
     public int selectedCalendarId() { return sp.getInt("cal_id", 0); }
     public void setSelectedCalendarId(int v) { sp.edit().putInt("cal_id", v).apply(); }
 
+    // ---------- 联网同步（服务器权威源） ----------
+    public String serverUrl() { return sp.getString("server_url", ""); }
+    public void setServerUrl(String v) { sp.edit().putString("server_url", v == null ? "" : v.trim()).apply(); }
+
+    /**
+     * 应用服务器数据（权威源）：覆盖 寝室名/成员/起始日期/游标。
+     * 签到记录与提醒设置属于本机状态，不随服务器覆盖。
+     * JSON 结构与 exportAll() 相同（服务器只需托管一个备份 JSON 文件）。
+     */
+    public boolean applyServerData(String json) {
+        try {
+            JSONObject o = new JSONObject(json);
+            SharedPreferences.Editor e = sp.edit();
+            if (o.has("room_name")) e.putString("room_name", o.getString("room_name"));
+            if (o.has("start_epoch")) e.putLong("start_epoch", o.getLong("start_epoch"));
+            if (o.has("start_index")) e.putInt("start_index", o.getInt("start_index"));
+            if (o.has("members")) e.putString("members", o.getString("members"));
+            e.apply();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ---------- 备份 / 恢复 ----------
     /** 导出全部数据为 JSON 字符串 */
     public String exportAll() {
@@ -150,6 +174,7 @@ public class DataStore {
             o.put("reminder_minute", sp.getInt("reminder_minute", 0));
             o.put("theme_index", sp.getInt("theme_index", 0));
             o.put("cal_id", sp.getInt("cal_id", 0));
+            o.put("server_url", sp.getString("server_url", ""));
             JSONObject checks = new JSONObject();
             for (String k : sp.getAll().keySet())
                 if (k.startsWith("check_")) checks.put(k, sp.getAll().get(k));
