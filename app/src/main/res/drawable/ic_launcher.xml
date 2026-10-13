@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 房子 -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M54,10 L96,44 L96,98 L12,98 L12,44 Z" />
+    <!-- 房子内部 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,22 L88,50 L88,90 L20,90 L20,50 Z" />
+    <!-- 床铺 1 -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M28,58 L44,58 L44,68 L28,68 Z" />
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M28,72 L44,72 L44,78 L28,78 Z" />
+    <!-- 床铺 2 -->
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M64,58 L80,58 L80,68 L64,68 Z" />
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M64,72 L80,72 L80,78 L64,78 Z" />
+    <!-- 扫帚 -->
+    <path
+        android:fillColor="#8D6E63"
+        android:pathData="M86,40 L98,52 L92,58 L80,46 Z" />
+    <path
+        android:strokeColor="#8D6E63"
+        android:strokeWidth="3"
+        android:pathData="M92,58 L76,74" />
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M70,80 L76,74 L84,82 L78,88 Z" />
+</vector>
