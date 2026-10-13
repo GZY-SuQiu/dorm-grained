@@ -76,3 +76,25 @@ jobs:
           else
             echo "PUSH FAILED:"; cat push.log; exit 1
           fi
+
+      # 把 APK 传到 Release 资产区（文件名：寝室值日.apk），tag 跟随 build.gradle 版本号
+      - name: Upload APK to Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+          cp "$APK" "寝室值日.apk"
+          VER=$(sed -n 's/.*versionName "\([^"]*\)".*/\1/p' app/build.gradle | head -1)
+          TAG="v${VER:-5.1}"
+          echo "Release tag: $TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "寝室值日.apk" --clobber
+            echo "Release asset updated: 寝室值日.apk"
+          else
+            gh release create "$TAG" "寝室值日.apk" \
+              --title "寝室值日 $TAG" \
+              --notes "自动构建（$(date -u +%Y-%m-%dT%H:%M:%SZ) · commit ${GITHUB_SHA:0:7}）"
+            echo "Release created: $TAG"
+          fi
