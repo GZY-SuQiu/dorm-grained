@@ -1516,8 +1516,8 @@ public class MainActivity extends Activity {
         ga.addView(infoRow("开发环境", "PyCharm"));
         ga.addView(infoRow("编译工程", "Android"));
         ga.addView(infoRow("开发者系统", "Windows11 专业工作站版"));
-        ga.addView(infoRow("作者", "苏丠"));
-        ga.addView(infoRow("开发者", "G_SuQiu"));
+        ga.addView(infoRow("作者", "郭宗源\n----------------------"));
+        ga.addView(infoRow("共创者名单如下", "\n代码主开发：郭宗源\n界面设计开发：武义涛\n动画设计开发者：徐浩"));
         ga.addView(para("如果存在问题或者功能缺陷欢迎联系："));
         TextView email = makeText(13, t.mainDark);
         email.setText("2376990248@qq.com");
@@ -1560,7 +1560,7 @@ public class MainActivity extends Activity {
     private View infoRow(String k, String v) {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setGravity(Gravity.TOP);
         r.setPadding(0, dp(3), 0, dp(3));
         TextView a = makeText(13, t.textSecondary);
         a.setText(k + "：");
